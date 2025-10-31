@@ -82,6 +82,7 @@ model User {
   roles                Role[]
   role_users           RoleUser[]
   payment_transactions PaymentTransaction[]
+  LeadData             LeadData[]
 
   @@map("users")
 }
@@ -419,18 +420,124 @@ model UserSetting {
   @@map("user_settings")
 }
 
-// this table stores example
-// model Note {
-//   id                String  @id @default(cuid())
-//   created_at DateTime  @default(now())
-//   updated_at DateTime  @default(now())
-//   deleted_at DateTime?
-//   status     Int?      @default(1) @db.SmallInt
+model LeadData {
+  id   String    @id @default(cuid())
+  type LeadType? // enum type
 
-//   title String?
-//   body  String? @db.Text
+  ///  Relation with User model
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id])
 
-//   tenant_id Int?
-//   tenant    Organization? @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-//   @@map("posts")
-// }
+  // ====== From sells ======
+  first_name     String?
+  last_name      String?
+  job_title      String?
+  email_first    String?
+  email_second   String?
+  phone          String?
+  company_phone  String?
+  url            String? // LinkedIn URL
+  company_name   String?
+  company_id     String?
+  company_domain String?
+  location       String?
+  linkedin_id    String?
+  created_at     String?
+
+  // ====== From zoominfo ======
+  zoominfo_id           String?
+  zoominfo_company_id   String?
+  name                  String?
+  email                 String?
+  email_score           Int?
+  work_phone            String?
+  lead_location         String?
+  lead_division         String?
+  lead_title            String?
+  decision_making_power String?
+  seniority_level       String?
+  linkedin_url          String?
+  company_size          String?
+  company_website       String?
+  company_location_text String?
+  company_type          String?
+  company_function      String?
+  company_sector        String?
+  company_industry      String?
+  company_founded_at    String?
+  company_funding_range String?
+  revenue_range         String?
+  ebitda_range          String?
+  last_funding_stage    String?
+  company_size_key      String?
+
+  // ====== From given JSON ======
+  title                               String?
+  company_name_for_emails             String?
+  email_status                        String?
+  primary_email_source                String?
+  primary_email_verification_source   String?
+  email_confidence                    String?
+  primary_email_catchall_status       String?
+  primary_email_last_verified_at      String?
+  seniority                           String?
+  departments                         String?
+  contact_owner                       String?
+  work_direct_phone                   String?
+  home_phone                          String?
+  mobile_phone                        String?
+  corporate_phone                     String?
+  other_phone                         String?
+  stage                               String?
+  lists                               String?
+  last_contacted                      String?
+  account_owner                       String?
+  employees                           String?
+  industry                            String?
+  keywords                            String?
+  person_linkedin_url                 String?
+  website                             String?
+  company_linkedin_url                String?
+  facebook_url                        String?
+  twitter_url                         String?
+  city                                String?
+  state                               String?
+  country                             String?
+  company_address                     String?
+  company_city                        String?
+  company_state                       String?
+  company_country                     String?
+  technologies                        String?
+  annual_revenue                      String?
+  total_funding                       String?
+  latest_funding                      String?
+  latest_funding_amount               String?
+  last_raised_at                      String?
+  subsidiary_of                       String?
+  email_sent                          String?
+  email_open                          String?
+  email_bounced                       String?
+  replied                             String?
+  demoed                              String?
+  number_of_retail_locations          String?
+  apollo_contact_id                   String?
+  apollo_account_id                   String?
+  secondary_email                     String?
+  secondary_email_source              String?
+  secondary_email_status              String?
+  secondary_email_verification_source String?
+  tertiary_email                      String?
+  tertiary_email_source               String?
+  tertiary_email_status               String?
+  tertiary_email_verification_source  String?
+
+  updated_at DateTime? @updatedAt
+  createdAt  DateTime? @default(now())
+}
+
+///  Enum type with 3 options
+enum LeadType {
+  SELL
+  ZOOMINFO
+  APOLLO
+}
