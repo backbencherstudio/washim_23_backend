@@ -14,35 +14,50 @@ import {
   BadRequestException,
   Res,
   HttpStatus,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { LeadDataService } from './lead-data.service';
 import { CreateLeadDatumDto } from './dto/create-lead-datum.dto';
 import { UpdateLeadDatumDto } from './dto/update-lead-datum.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from 'src/modules/auth/guards/optional-jwt-auth.guard';
+import { Role } from 'src/common/guard/role/role.enum';
 
 @Controller('leads')
 export class LeadDataController {
   constructor(private readonly LeadDataService: LeadDataService) {}
 
-  @Get()
-  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
-  async getLeads(@Query() query: CreateLeadDatumDto & Record<string, any>) {
-    return this.LeadDataService.findAll(query);
-  }
+@Get()
+@UseGuards(OptionalJwtAuthGuard) 
+@UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+async getLeads(@Query() query: Record<string, any>, @Req() req: any) {
+  const user = req.user || null; // user may be null if not logged in
+  return this.LeadDataService.findAll(query, user);
+}
+
 
   @Post('import')
+  @UseGuards(JwtAuthGuard) 
   @UseInterceptors(FileInterceptor('file'))
-  async importCsv(@UploadedFile() file: Express.Multer.File) {
-    if (!file) {
-      throw new BadRequestException('CSV file is required (field: file)');
-    }
-    // basic content-type check
-    if (!file.originalname.match(/\.csv$/i)) {
+  async importCsv(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('type') type: string,
+    @Req() req: any,
+  ) {
+    if (!file) throw new BadRequestException('CSV file is required');
+    if (!file.originalname.match(/\.csv$/i))
       throw new BadRequestException('Only .csv files are accepted');
-    }
+    if (!type) throw new BadRequestException('type is required');
 
-    const result = await this.LeadDataService.importFromCsv(file.buffer);
+    const user_id = req.user.id; // Extract user_id from JWT
+
+    const result = await this.LeadDataService.importFromCsv(file.buffer, {
+      type,
+      user_id,
+    });
     return result;
   }
 
@@ -73,5 +88,13 @@ export class LeadDataController {
       message: `Requested to delete ${result.requested} lead(s).`,
       deleted: result.deleted,
     };
+  }
+
+
+  // filter api all
+
+  @Get('job_titles')
+  async getJobTitles() {
+    return this.LeadDataService.getJobTitles();
   }
 }
