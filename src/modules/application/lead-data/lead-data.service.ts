@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { parse } from 'csv-parse/sync';
+import * as Papa from 'papaparse';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
@@ -117,270 +117,335 @@ export class LeadDataService {
 
   // IMPORT CSV
 
-  async importFromCsv(
-    buffer: Buffer,
-    options: { type: string; user_id: string },
-  ) {
-    try {
-      const { type, user_id } = options;
-      const text = buffer.toString('utf-8');
+async importCsv(csvData: string, type: string, userId: string) {
+  if (!userId) throw new BadRequestException('User not found');
 
-      let records: any[];
-      try {
-        records = parse(text, {
-          columns: true,
-          skip_empty_lines: true,
-          trim: true,
-        });
-      } catch {
-        throw new BadRequestException('Invalid CSV format');
-      }
+  const expectedHeaders: string[] = [];
+  let emailColumns: string[] = [];
 
-      if (records.length === 0) throw new BadRequestException('CSV is empty');
+  switch (type) {
+    case 'SALES_NAVIGATOR':
+      expectedHeaders.push(
+        'first_name', 'last_name', 'job_title', 'email_first', 'email_second',
+        'phone', 'company_phone', 'url', 'company_name', 'company_domain',
+        'company_id', 'city', 'linkedin_id', 'created_date'
+      );
+      emailColumns = ['email_first', 'email_second'];
+      break;
 
-      const headers = Object.keys(records[0]);
-      const unknown = headers.filter((h) => !this.allowedFields.has(h));
-      if (unknown.length)
-        throw new BadRequestException(`Unknown columns: ${unknown.join(', ')}`);
+    case 'ZOOMINFO':
+      expectedHeaders.push(
+        'company_id','name', 'email', 'email_score','phone', 'work_phone', 'lead_location', 
+        'lead_divison', 'lead_titles', 'seniority_level', 'skills', 
+        'past_companies', 'company_name', 'company_size', 'company_phone_numbers',
+        'company_location_text', 'company_type', 'company_industry', 
+        'company_sector', 'company_facebook_page', 'revenue_range', 
+        'ebitda_range', 'company_linkedin_page', 'company_sic_code', 
+        'company_naics_code', 'company_size_key', 'linkedin_url', 
+        'company_founded_at', 'company_website', 'company_products_services'
+      );
+      emailColumns = ['email'];
+      break;
 
-      const chunkSize = 1000; // Adjust chunk size based on memory/performance
-      const imported: any[] = [];
-      const errors: { row: number; error: string; data?: any }[] = [];
+    case 'APOLLO':
+      expectedHeaders.push(
+        'first_name', 'last_name', 'title', 'company_name', 'company_name_for_emails',
+        'email', 'email_status', 'primary_email_source', 'primary_email_verification_source',
+        'email_confidence', 'primary_email_catch_all_status', 'primary_email_last_verified_at',
+        'seniority', 'departments', 'contact_owner', 'work_direct_phone', 'home_phone',
+        'mobile_phone', 'corporate_phone', 'other_phone', 'stage', 'lists', 
+        'last_contacted', 'account_owner', 'employees', 'industry', 'keywords',
+        'person_linkedin_url', 'website', 'company_uinkedin_url', 'facebook_url',
+        'twitter_url', 'city', 'state', 'country', 'company_address', 'company_city',
+        'company_state', 'company_country', 'company_phone', 'technologies',
+        'annual_revenue', 'total_funding', 'latest_funding', 'latest_funding_amount',
+        'last_raised_at', 'subsidiary_of', 'email_sent', 'email_open', 'email_bounced',
+        'replied', 'demoed', 'number_of_retail_locations', 'apollo_contact_id',
+        'apollo_account_id', 'secondary_email', 'secondary_email_source',
+        'secondary_email_status', 'secondary_email_verification_source',
+        'tertiary_email', 'tertiary_email_source', 'tertiary_email_status',
+        'tertiary_email_verification_source'
+      );
+      emailColumns = ['email', 'secondary_email', 'tertiary_email'];
+      break;
 
-      for (let i = 0; i < records.length; i += chunkSize) {
-        const chunk = records.slice(i, i + chunkSize).map((row, index) => {
-          // Add type & user_id
-          row.type = type;
-          row.user_id = user_id;
-
-          // Numeric conversion
-          if ('email_score' in row && row.email_score !== '') {
-            const n = Number(row.email_score);
-            row.email_score = Number.isNaN(n) ? null : n;
-          }
-
-          // Date conversion
-          const dateFields = [
-            'createdAt',
-            'updated_at',
-            'company_founded_at',
-            'last_funding_stage',
-            'Last Raised At',
-          ];
-          for (const key of dateFields) {
-            if (row[key]) {
-              const parsed = new Date(row[key]);
-              row[key] = isNaN(parsed.getTime())
-                ? undefined
-                : parsed.toISOString();
-            }
-          }
-
-          return row;
-        });
-
-        // Insert chunk in transaction
-        try {
-          const created = await this.prisma.leadData.createMany({
-            data: chunk,
-            skipDuplicates: true,
-          });
-          imported.push(created.count);
-        } catch (err) {
-          // Handle row-level errors individually
-          for (let j = 0; j < chunk.length; j++) {
-            try {
-              await this.prisma.leadData.create({ data: chunk[j] });
-              imported.push(1);
-            } catch (rowErr) {
-              errors.push({
-                row: i + j + 1,
-                error: rowErr.message || rowErr,
-                data: chunk[j],
-              });
-            }
-          }
-        }
-      }
-
-      return {
-        success: errors.length === 0,
-        message:
-          errors.length === 0
-            ? `Imported ${imported.reduce((a, b) => a + b, 0)} records successfully.`
-            : `Imported ${imported.reduce((a, b) => a + b, 0)} records with ${errors.length} errors.`,
-        totalRows: records.length,
-        imported: imported.reduce((a, b) => a + b, 0),
-        errorsCount: errors.length,
-        errors,
-      };
-    } catch (err) {
-      throw new BadRequestException('Failed to parse CSV file');
-    }
+    default:
+      throw new BadRequestException('Invalid lead type');
   }
 
-  // EXPORT CSV: apply filters & return string
-  async exportToCsv(query: any) {
-    const { take, skip, where, orderBy } = this.buildPrismaQuery(query);
-    const rows = await this.prisma.leadData.findMany({ where, orderBy });
+  // Parse CSV
+  const parsed = Papa.parse(csvData, { header: true, skipEmptyLines: false });
 
-    if (!rows.length) return { csv: '', count: 0 };
-
-    // headers: union of all allowedFields present in rows; keep a stable order (allowedFields insertion order)
-    const headers = Array.from(this.allowedFields).filter((h) =>
-      rows.some((r) => r[h] !== undefined && r[h] !== null && r[h] !== ''),
-    );
-
-    // build CSV safely
-    const escape = (val: any) => {
-      if (val === null || val === undefined) return '';
-      const s = String(val);
-      if (s.includes('"') || s.includes(',') || s.includes('\n')) {
-        return `"${s.replace(/"/g, '""')}"`;
-      }
-      return s;
-    };
-
-    const lines = [headers.join(',')];
-    for (const r of rows) {
-      const line = headers.map((h) => escape(r[h])).join(',');
-      lines.push(line);
-    }
-
-    return { csv: lines.join('\n'), count: rows.length };
-  }
-
-  // GET with pagination, global search q and field filters
-async findAll(query: Record<string, any>, user: any) {
-  //  Pagination setup
-  const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
-  const skip = (page - 1) * limit;
-
-  // 2️⃣ Dynamic filter object
-  const where: Prisma.LeadDataWhereInput = {};
-
-  // 2a️⃣ Multi-name search (comma or space separated)
-  if (query.name) {
-    const names = query.name.split(/[,\s]+/).filter(Boolean);
-    where.OR = names.map((n: string) => ({
-      name: { contains: n, mode: 'insensitive' },
-    }));
-  }
-
-  // 2b️⃣ Generic multi-value filters for all other fields
-  for (const key of Object.keys(query)) {
-    if (['page', 'limit', 'name', 'sortBy', 'order'].includes(key)) continue;
-
-    const value = query[key];
-    if (!value) continue;
-
-    let values: string[] = [];
-
-    // Try parse JSON array (for multi-value fields)
-    try {
-      values = Array.isArray(value) ? value : JSON.parse(value);
-      if (!Array.isArray(values)) values = [String(value)];
-    } catch {
-      values = [String(value)];
-    }
-
-    // Ensure AND is an array (Prisma types allow AND to be an object or an array)
-    if (!Array.isArray(where.AND)) {
-      where.AND = where.AND ? [where.AND as any] : [];
-    }
-    (where.AND as any[]).push({
-      OR: values.map((v) => ({
-        [key]: { contains: v, mode: 'insensitive' },
-      })),
-    });
-  }
-
-  // 3️⃣ Sorting setup
-  const sortBy = query.sortBy || 'createdAt';
-  const order =
-    query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-      ? (query.order.toLowerCase() as Prisma.SortOrder)
-      : Prisma.SortOrder.desc;
-
-  const orderBy: Prisma.LeadDataOrderByWithRelationInput = {
-    [sortBy]: order,
-  };
-
-  // 4️⃣ Guest restriction: only 20 total results, no pagination
-  if (!user) {
-    const data = await this.prisma.leadData.findMany({
-      where,
-      take: 20,
-      orderBy,
-    });
-
+  if (parsed.errors.length) {
     return {
-      data,
-      meta: {
-        total: data.length,
-        page: 1,
-        limit: 20,
-        pages: 1,
-      },
-      access: 'guest',
+      success: false,
+      message: 'CSV Parsing Error',
+      errors: parsed.errors.map((e) => ({
+        row: e.row,
+        message: e.message,
+      })),
     };
   }
 
-  // 5️⃣ Authorized user: full paginated data with count
-  const [data, total] = await this.prisma.$transaction([
-    this.prisma.leadData.findMany({
-      where,
-      take: limit,
-      skip,
-      orderBy,
-    }),
-    this.prisma.leadData.count({ where }),
-  ]);
+  // Check headers
+  const headers = parsed.meta.fields || [];
+  const invalidHeaders = headers.filter((h) => !expectedHeaders.includes(h));
+  if (invalidHeaders.length) {
+    const details = invalidHeaders.map((h) => {
+      const match = expectedHeaders.find((eh) => eh.toLowerCase() === h.toLowerCase());
+      return match ? `${h} (did you mean '${match}'?)` : `${h} (unknown)`;
+    });
+    throw new BadRequestException(`Incorrect heading name: ${details.join(', ')}`);
+  }
+
+  // Row-level validation & cleaning
+  const errorRows: any[] = [];
+  const cleanedRows = parsed.data
+    .map((row: any, index: number) => {
+      const cleanRow: any = {};
+      let rowHasError = false;
+      const rowErrors: string[] = [];
+
+      Object.keys(row).forEach((key) => {
+        let value = String(row[key] || '').trim();
+
+        // Convert "nan" or empty string to null
+        if (value.toLowerCase() === 'nan' || value === '') value = null;
+
+        // Remove extra quotes/brackets
+        if (value) value = value.replace(/^(\[?['"]\]?)+|(['"]\]?)+$/g, '');
+
+        // Validate email
+        if (emailColumns.includes(key) && value && !value.includes('@')) {
+          rowHasError = true;
+          rowErrors.push(`Invalid email in column '${key}'`);
+        }
+
+        // Truncate string if too long for DB
+        if (value && typeof value === 'string' && value.length > 1000) {
+          value = value.substring(0, 1000);
+        }
+
+        cleanRow[key] = value;
+      });
+
+      const hasData = Object.values(cleanRow).some((v) => v !== null);
+      if (!hasData) return null;
+
+      if (rowHasError) {
+        errorRows.push({ row: index + 2, errors: rowErrors, data: row });
+        return null;
+      }
+
+      return { ...cleanRow, userId };
+    })
+    .filter((r) => r !== null);
+
+  // Insert valid rows
+  if (cleanedRows.length) {
+    switch (type) {
+      case 'SALES_NAVIGATOR':
+        await this.prisma.salesNavigatorLead.createMany({ data: cleanedRows });
+        break;
+      case 'ZOOMINFO':
+        await this.prisma.zoominfoLead.createMany({ data: cleanedRows });
+        break;
+      case 'APOLLO':
+        await this.prisma.apolloLead.createMany({ data: cleanedRows });
+        break;
+    }
+  }
 
   return {
-    data,
-    meta: {
-      total,
-      page,
-      limit,
-      pages: Math.ceil(total / limit),
-    },
-    access: 'authorized',
+    success: true,
+    imported: cleanedRows.length,
+    type,
+    message: `${type} leads imported successfully.`,
+    errors: errorRows.length ? errorRows : null,
   };
 }
 
 
 
-  async deleteLeads(params: { count?: number }) {
-    const MAX_DELETE = 5000; // max ekbar e delete kora jaabe
-    const requestedCount = params.count ?? 1000; // default 1000
-    const count = Math.min(requestedCount, MAX_DELETE);
-
-    if (!Number.isInteger(count) || count <= 0) {
-      throw new BadRequestException('Count must be a positive integer');
-    }
-
-    // Find oldest N records
-    const items = await this.prisma.leadData.findMany({
-      take: count,
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    });
-
-    if (items.length === 0) {
-      return { requested: count, deleted: 0 };
-    }
-
-    const ids = items.map((i) => i.id);
-
-    // Delete by ids
-    const result = await this.prisma.leadData.deleteMany({
-      where: { id: { in: ids } },
-    });
-
-    return { requested: count, deleted: result.count };
+  // EXPORT CSV: apply filters & return string
+  async exportToCsv(query: any) {
+    // const { take, skip, where, orderBy } = this.buildPrismaQuery(query);
+    // const rows = await this.prisma.leadData.findMany({ where, orderBy });
+    // if (!rows.length) return { csv: '', count: 0 };
+    // // headers: union of all allowedFields present in rows; keep a stable order (allowedFields insertion order)
+    // const headers = Array.from(this.allowedFields).filter((h) =>
+    //   rows.some((r) => r[h] !== undefined && r[h] !== null && r[h] !== ''),
+    // );
+    // // build CSV safely
+    // const escape = (val: any) => {
+    //   if (val === null || val === undefined) return '';
+    //   const s = String(val);
+    //   if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+    //     return `"${s.replace(/"/g, '""')}"`;
+    //   }
+    //   return s;
+    // };
+    // const lines = [headers.join(',')];
+    // for (const r of rows) {
+    //   const line = headers.map((h) => escape(r[h])).join(',');
+    //   lines.push(line);
+    // }
+    // return { csv: lines.join('\n'), count: rows.length };
   }
+
+  // ========================================================
+  // 🔹 COMMON PAGINATION + FILTER LOGIC
+  // ========================================================
+  private async dynamicFindAll(
+    model: 'salesNavigatorLead' | 'zoominfoLead' | 'apolloLead' | 'leadData',
+    query: Record<string, any>,
+    user: any,
+  ) {
+    // Pagination setup
+    const page = Number(query.page) > 0 ? Number(query.page) : 1;
+    const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+
+    // Multi-name search
+    if (query.name) {
+      const names = query.name.split(/[,\s]+/).filter(Boolean);
+      where.OR = names.map((n: string) => ({
+        name: { contains: n, mode: 'insensitive' },
+      }));
+    }
+
+    // Generic multi-field filters
+    for (const key of Object.keys(query)) {
+      if (['page', 'limit', 'name', 'sortBy', 'order'].includes(key)) continue;
+      const value = query[key];
+      if (!value) continue;
+
+      let values: string[] = [];
+      try {
+        values = Array.isArray(value) ? value : JSON.parse(value);
+        if (!Array.isArray(values)) values = [String(value)];
+      } catch {
+        values = [String(value)];
+      }
+
+      if (!Array.isArray(where.AND)) {
+        where.AND = where.AND ? [where.AND as any] : [];
+      }
+      (where.AND as any[]).push({
+        OR: values.map((v) => ({
+          [key]: { contains: v, mode: 'insensitive' },
+        })),
+      });
+    }
+
+    // Sorting
+    const sortBy = query.sortBy || 'created_at';
+    const order =
+      query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+        ? (query.order.toLowerCase() as Prisma.SortOrder)
+        : Prisma.SortOrder.desc;
+
+    const orderBy = { [sortBy]: order };
+
+    // get the delegate for the requested model and assert it has findMany/count
+    const delegate: {
+      findMany: (args?: any) => Promise<any[]>;
+      count: (args?: any) => Promise<number>;
+    } = (this.prisma as any)[model];
+
+    // Guest: only 20 total
+    if (!user) {
+      const data = await delegate.findMany({
+        where,
+        take: 20,
+        orderBy,
+      });
+
+      if (data.length == 0) {
+        return {
+          success: false,
+          message: 'Data not found. Please import data first.',
+        };
+      }
+
+      return {
+        success:true,
+        message:"Get All Data",
+        data,
+        meta: {
+          total: data.length,
+          page: 1,
+          limit: 20,
+          pages: 1,
+        },
+        access: 'guest',
+      };
+    }
+
+    // Authorized: full pagination
+    const [data, total] = await Promise.all([
+      delegate.findMany({
+        where,
+        take: limit,
+        skip,
+        orderBy,
+      }),
+      delegate.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+      access: 'authorized',
+    };
+  }
+
+  // ========================================================
+  // 🔹 MODEL-WISE FIND ALL FUNCTIONS
+  // ========================================================
+
+  async findAllSalesNavigator(query: Record<string, any>, user: any) {
+    return this.dynamicFindAll('salesNavigatorLead', query, user);
+  }
+
+  async findAllZoominfo(query: Record<string, any>, user: any) {
+    return this.dynamicFindAll('zoominfoLead', query, user);
+  }
+
+  async findAllApollo(query: Record<string, any>, user: any) {
+    return this.dynamicFindAll('apolloLead', query, user);
+  }
+
+  // async deleteLeads(params: { count?: number }) {
+  //   const MAX_DELETE = 5000; // max ekbar e delete kora jaabe
+  //   const requestedCount = params.count ?? 1000; // default 1000
+  //   const count = Math.min(requestedCount, MAX_DELETE);
+  //   if (!Number.isInteger(count) || count <= 0) {
+  //     throw new BadRequestException('Count must be a positive integer');
+  //   }
+  //   // Find oldest N records
+  //   const items = await this.prisma.leadData.findMany({
+  //     take: count,
+  //     orderBy: { created_at: 'asc' },
+  //     select: { id: true },
+  //   });
+  //   if (items.length === 0) {
+  //     return { requested: count, deleted: 0 };
+  //   }
+  //   const ids = items.map((i) => i.id);
+  //   // Delete by ids
+  //   const result = await this.prisma.leadData.deleteMany({
+  //     where: { id: { in: ids } },
+  //   });
+  //   return { requested: count, deleted: result.count };
+  // }
 
   // Build prisma where/orderBy from query
   private buildPrismaQuery(
@@ -461,24 +526,22 @@ async findAll(query: Record<string, any>, user: any) {
   }
 
   async getJobTitles() {
-    try {
-      const titles = await this.prisma.leadData.findMany({
-        select: {
-          id: true,
-          job_title: true,
-        },
-        take: 10,
-        orderBy: { createdAt: 'desc' }, // newest first
-      });
-
-      return {
-        success: true,
-        message: 'All job title Fatch ',
-        data: titles,
-      };
-    } catch (err) {
-      throw new BadRequestException('Job title Fetch Faild' )
-    }
+      try {
+        const titles = await this.prisma.apolloLead.findMany({
+          select: {
+            id: true,
+            title: true,
+          },
+          take: 10,
+          orderBy: { created_at: 'desc' }, // newest first
+        });
+        return {
+          success: true,
+          message: 'All job title Fatch ',
+          data: titles,
+        };
+      } catch (err) {
+        throw new BadRequestException('Job title Fetch Faild');
+      }
   }
-
 }

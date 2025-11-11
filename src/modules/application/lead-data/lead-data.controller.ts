@@ -1,95 +1,111 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
   Get,
   Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  UsePipes,
-  ValidationPipe,
   Query,
-  UseInterceptors,
-  UploadedFile,
-  BadRequestException,
-  Res,
-  HttpStatus,
-  UseGuards,
   Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors
 } from '@nestjs/common';
-import { Response } from 'express';
-import { LeadDataService } from './lead-data.service';
-import { CreateLeadDatumDto } from './dto/create-lead-datum.dto';
-import { UpdateLeadDatumDto } from './dto/update-lead-datum.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from 'src/modules/auth/guards/optional-jwt-auth.guard';
-import { Role } from 'src/common/guard/role/role.enum';
+import { LeadDataService } from './lead-data.service';
 
 @Controller('leads')
+@UseGuards(OptionalJwtAuthGuard)
 export class LeadDataController {
   constructor(private readonly LeadDataService: LeadDataService) {}
 
-@Get()
-@UseGuards(OptionalJwtAuthGuard) 
-@UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
-async getLeads(@Query() query: Record<string, any>, @Req() req: any) {
-  const user = req.user || null; // user may be null if not logged in
-  return this.LeadDataService.findAll(query, user);
+  // @Get()
+  // @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  // async getLeads(@Query() query: Record<string, any>, @Req() req: any) {
+  //   const user = req.user || null; // user may be null if not logged in
+  //   return this.LeadDataService.findAll(query, user);
+  // }
+
+@Post('import')
+@UseInterceptors(FileInterceptor('file'))
+async importLeads(
+  @UploadedFile() file: Express.Multer.File,
+  @Body('type') type: 'SALES_NAVIGATOR' | 'ZOOMINFO' | 'APOLLO',
+  @Req() req,
+) {
+  try {
+    if (!file) throw new BadRequestException('CSV file is required');
+    if (!type) throw new BadRequestException('Lead type is required');
+
+    const buffer = file.buffer.toString('utf-8');
+    
+    // userId can come from req.user.id if using auth middleware
+    const userId = req.user?.sub;
+    console.log('user id', req.user)
+    if (!userId) throw new BadRequestException('User not found');
+
+    return await this.LeadDataService.importCsv(buffer, type, userId);
+  } catch (error) {
+    // Return proper error
+    if (error instanceof BadRequestException) {
+      throw error;
+    }
+    console.error(error);
+    throw new BadRequestException(error.message || 'Import failed');
+  }
 }
 
 
-  @Post('import')
-  @UseGuards(JwtAuthGuard) 
-  @UseInterceptors(FileInterceptor('file'))
-  async importCsv(
-    @UploadedFile() file: Express.Multer.File,
-    @Body('type') type: string,
-    @Req() req: any,
-  ) {
-    if (!file) throw new BadRequestException('CSV file is required');
-    if (!file.originalname.match(/\.csv$/i))
-      throw new BadRequestException('Only .csv files are accepted');
-    if (!type) throw new BadRequestException('type is required');
+  // @Get('export')
+  // async exportCsv(@Query() query: Record<string, any>, @Res() res: Response) {
+  //   const { csv, count } = await this.LeadDataService.exportToCsv(query);
+  //   const filename = `leads_export_${Date.now()}.csv`;
+  //   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  //   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  //   res.status(HttpStatus.OK).send(csv);
+  // }
 
-    const user_id = req.user.id; // Extract user_id from JWT
+  // ==============================
+  // 📥 GET ENDPOINTS (Model-wise)
+  // ==============================
 
-    const result = await this.LeadDataService.importFromCsv(file.buffer, {
-      type,
-      user_id,
-    });
-    return result;
+  // 🔹 Sales Navigator - Find All
+  @Get('sales-navigator')
+  async findAllSalesNavigator(@Query() query: Record<string, any>, @Req() req) {
+    return this.LeadDataService.findAllSalesNavigator(query, req.user);
   }
 
-  @Get('export')
-  async exportCsv(@Query() query: Record<string, any>, @Res() res: Response) {
-    const { csv, count } = await this.LeadDataService.exportToCsv(query);
-    const filename = `leads_export_${Date.now()}.csv`;
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.status(HttpStatus.OK).send(csv);
+  // 🔹 ZoomInfo - Find All
+  @Get('zoominfo')
+  async findAllZoominfo(@Query() query: Record<string, any>, @Req() req) {
+    return this.LeadDataService.findAllZoominfo(query, req.user);
   }
 
-  @Delete()
-  async deleteLeads(@Query('count') count?: string) {
-    let parsedCount: number | undefined;
-
-    if (count !== undefined) {
-      parsedCount = Number(count);
-      if (!Number.isInteger(parsedCount) || parsedCount <= 0) {
-        throw new BadRequestException('Count must be a positive integer');
-      }
-    }
-
-    const result = await this.LeadDataService.deleteLeads({
-      count: parsedCount,
-    });
-    return {
-      message: `Requested to delete ${result.requested} lead(s).`,
-      deleted: result.deleted,
-    };
+  // 🔹 Apollo - Find All
+  @Get('apollo')
+  async findAllApollo(@Query() query: Record<string, any>, @Req() req) {
+    return this.LeadDataService.findAllApollo(query, req.user);
   }
 
+  // @Delete()
+  // async deleteLeads(@Query('count') count?: string) {
+  //   let parsedCount: number | undefined;
+
+  //   if (count !== undefined) {
+  //     parsedCount = Number(count);
+  //     if (!Number.isInteger(parsedCount) || parsedCount <= 0) {
+  //       throw new BadRequestException('Count must be a positive integer');
+  //     }
+  //   }
+
+  //   const result = await this.LeadDataService.deleteLeads({
+  //     count: parsedCount,
+  //   });
+  //   return {
+  //     message: `Requested to delete ${result.requested} lead(s).`,
+  //     deleted: result.deleted,
+  //   };
+  // }
 
   // filter api all
 
