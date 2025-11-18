@@ -435,6 +435,8 @@ model SalesNavigatorLead {
   company_name   String?
   company_domain String?
   company_id     String?
+  //
+  location       String?
   city           String?
   linkedin_id    String?
   created_date   String?
@@ -446,30 +448,36 @@ model SalesNavigatorLead {
 }
 
 model ZoominfoLead {
-  id                        String    @id @default(cuid())
-  company_id                String?
-  name                      String?
-  email                     String?
-  email_score               String?
-  phone                     String?
-  work_phone                String?
-  lead_location             String?
-  lead_divison              String?
-  lead_titles               String?
-  seniority_level           String?
-  skills                    String?
-  past_companies            String?
-  company_name              String?
-  company_size              String?
-  company_phone_numbers     String?
-  company_location_text     String?
-  company_type              String?
-  company_industry          String?
-  company_sector            String?
-  company_facebook_page     String?
-  revenue_range             String?
-  ebitda_range              String?
-  company_linkedin_page     String?
+  id                    String  @id @default(cuid())
+  company_id            String?
+  name                  String?
+  email                 String?
+  email_score           String?
+  phone                 String?
+  work_phone            String?
+  lead_location         String?
+  lead_divison          String?
+  lead_titles           String?
+  seniority_level       String?
+  skills                String?
+  past_companies        String?
+  company_name          String?
+  company_size          String?
+  company_phone_numbers String?
+  company_location_text String?
+  company_type          String?
+  company_industry      String?
+  company_sector        String?
+  company_facebook_page String?
+  revenue_range         String?
+  ebitda_range          String?
+  company_linkedin_page String?
+
+  decision_making_power String?
+  company_function      String?
+  company_funding_range String?
+  latest_funding_stage  String?
+
   company_sic_code          String?
   company_naics_code        String?
   company_size_key          String?

@@ -226,17 +226,17 @@ export class AuthService {
     try {
       const payload = { email: email, sub: userId };
 
-      const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
-      const refreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });
+      const accessToken = this.jwtService.sign(payload, { expiresIn: '30d' });
+      const refreshToken = this.jwtService.sign(payload, { expiresIn: '30d' });
 
       const user = await UserRepository.getUserDetails(userId);
 
-      // store refreshToken
+    
       await this.redis.set(
         `refresh_token:${user.id}`,
         refreshToken,
         'EX',
-        60 * 60 * 24 * 7, // 7 days in seconds
+        60 * 60 * 24 * 30, 
       );
 
       return {
