@@ -3,6 +3,15 @@ import { Prisma } from '@prisma/client';
 import * as Papa from 'papaparse';
 import { PrismaService } from 'src/prisma/prisma.service';
 
+// 💡 FIX: Define a minimal interface to satisfy TypeScript's strict type checking
+// when dynamically calling createMany on different model delegates.
+interface LeadDelegate {
+  createMany: (args: {
+    data: any[];
+    skipDuplicates: boolean;
+  }) => Prisma.PrismaPromise<Prisma.BatchPayload>;
+}
+
 @Injectable()
 export class LeadDataService {
   private allowedFields = new Set<string>([
@@ -85,6 +94,7 @@ export class LeadDataService {
     'company_city',
     'company_state',
     'company_country',
+    'company_phone',
     'technologies',
     'annual_revenue',
     'total_funding',
@@ -117,7 +127,7 @@ export class LeadDataService {
   async importCsv(csvData: string, type: string, userId: string) {
     if (!userId) throw new BadRequestException('User not found');
 
-    // 1. Define headers based on type (Same as before)
+    // 1. Define headers based on type
     const expectedHeaders: string[] = [];
     let emailColumns: string[] = [];
 
@@ -270,13 +280,9 @@ export class LeadDataService {
     }
 
     // 3. Row Processing
-    // We removed the header strict check to allow partial imports if needed,
-    // but if you want strict headers, you can keep that block.
-
     const cleanedRows = parsed.data
       .map((row: any) => {
         // Initialize object with all expected keys set to NULL
-        // This ensures the DB gets a complete object structure
         const cleanRow: any = {};
         expectedHeaders.forEach((h) => (cleanRow[h] = null));
 
@@ -312,60 +318,72 @@ export class LeadDataService {
         if (!hasData) return null;
 
         // Attach User ID
-        cleanRow['userId'] = userId; // Note: In schema relation fields might be `userId` or `user_id` check Schema carefully.
-        // Based on your schema:
-        // SalesNavigatorLead -> userId
-        // ZoominfoLead -> userId
-        // ApolloLead -> userId
-        // So 'userId' is correct.
-
+        cleanRow['userId'] = userId;
         return cleanRow;
       })
       .filter((r) => r !== null); // Remove completely empty rows
 
-    // 4. Insert Valid Rows
+    // 4. Insert Valid Rows (Batch Insertion)
     if (cleanedRows.length) {
+      const BATCH_SIZE = 5000; // Optimal batch size to avoid V8 string length limit
+      let insertedCount = 0;
+
+      // Get the raw delegate union type
+      const rawDelegate =
+        type === 'SALES_NAVIGATOR'
+          ? this.prisma.salesNavigatorLead
+          : type === 'ZOOMINFO'
+            ? this.prisma.zoominfoLead
+            : type === 'APOLLO'
+              ? this.prisma.apolloLead
+              : null;
+
+      if (!rawDelegate) {
+        throw new BadRequestException('Invalid lead type for batch insertion');
+      }
+
+      // Assert the delegate type to ensure createMany is callable
+      const delegate = rawDelegate as unknown as LeadDelegate;
+
       try {
-        switch (type) {
-          case 'SALES_NAVIGATOR':
-            await this.prisma.salesNavigatorLead.createMany({
-              data: cleanedRows,
-              skipDuplicates: true, // Optional: Skips if unique constraint fails
-            });
-            break;
-          case 'ZOOMINFO':
-            await this.prisma.zoominfoLead.createMany({
-              data: cleanedRows,
-              skipDuplicates: true,
-            });
-            break;
-          case 'APOLLO':
-            await this.prisma.apolloLead.createMany({
-              data: cleanedRows,
-              skipDuplicates: true,
-            });
-            break;
+        // Iterate through data in chunks (batches)
+        for (let i = 0; i < cleanedRows.length; i += BATCH_SIZE) {
+          const batch = cleanedRows.slice(i, i + BATCH_SIZE);
+
+          // Use createMany for the small batch
+          const result = await delegate.createMany({
+            data: batch,
+            skipDuplicates: true,
+          });
+          insertedCount += result.count;
         }
+
+        return {
+          success: true,
+          imported: insertedCount, // Total count from all successful batches
+          type,
+          message: `${insertedCount} ${type} leads imported successfully.`,
+          errors: null,
+        };
       } catch (error) {
         console.error('Database Insert Error:', error);
         throw new BadRequestException(
-          'Failed to save data to database. Check fields.',
+          'Failed to save data to database. Check fields or reduce batch size.',
         );
       }
     }
 
     return {
       success: true,
-      imported: cleanedRows.length,
+      imported: 0,
       type,
-      message: `${type} leads imported successfully.`,
-      // We are no longer returning errorRows because we fix them or ignore bad fields
+      message: `No valid ${type} leads found to import.`,
       errors: null,
     };
   }
 
   // ========================================================
-  // 🔹 COMMON PAGINATION + FILTER LOGIC
+  // 🔹 COMMON PAGINATION + FILTER LOGIC (DYNAMIC FIND ALL)
   // ========================================================
   private async dynamicFindAll(
     model: 'salesNavigatorLead' | 'zoominfoLead' | 'apolloLead' | 'leadData',
@@ -477,144 +495,6 @@ export class LeadDataService {
       access: 'authorized',
     };
   }
-  // private async ApolloLead(
-  //   model: 'apolloLead',
-  //   query: Record<string, any>,
-  //   user: any,
-  // ) {
-  //   // Pagination setup
-  //   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  //   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
-  //   const skip = (page - 1) * limit;
-
-  //   const where: any = {};
-
-  //   // Multi-name search
-  //   if (query.name) {
-  //     const names = query.name.split(/[,\s]+/).filter(Boolean);
-  //     where.OR = names.map((n: string) => ({
-  //       name: { contains: n, mode: 'insensitive' },
-  //     }));
-  //   }
-
-  //   // Generic multi-field filters
-  //   for (const key of Object.keys(query)) {
-  //     if (['page', 'limit', 'name', 'sortBy', 'order'].includes(key)) continue;
-  //     const value = query[key];
-  //     if (!value) continue;
-
-  //     let values: string[] = [];
-  //     try {
-  //       values = Array.isArray(value) ? value : JSON.parse(value);
-  //       if (!Array.isArray(values)) values = [String(value)];
-  //     } catch {
-  //       values = [String(value)];
-  //     }
-
-  //     if (!Array.isArray(where.AND)) {
-  //       where.AND = where.AND ? [where.AND as any] : [];
-  //     }
-  //     (where.AND as any[]).push({
-  //       OR: values.map((v) => ({
-  //         [key]: { contains: v, mode: 'insensitive' },
-  //       })),
-  //     });
-  //   }
-
-  //   // Sorting
-  //   const sortBy = query.sortBy || 'created_at';
-  //   const order =
-  //     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-  //       ? (query.order.toLowerCase() as Prisma.SortOrder)
-  //       : Prisma.SortOrder.desc;
-
-  //   const orderBy = { [sortBy]: order };
-
-  //   // get the delegate for the requested model and assert it has findMany/count
-  //   const delegate: {
-  //     findMany: (args?: any) => Promise<any[]>;
-  //     count: (args?: any) => Promise<number>;
-  //   } = (this.prisma as any)[model];
-
-  //   // Guest: only 20 total
-  //   if (!user) {
-  //     const data = await delegate.findMany({
-  //       where,
-  //       take: 20,
-  //       orderBy,
-  //     });
-
-  //     if (data.length == 0) {
-  //       return {
-  //         success: false,
-  //         message: 'Data not found. Please import data first.',
-  //       };
-  //     }
-
-  //     return {
-  //       success: true,
-  //       message: 'Get All Data',
-  //       data,
-  //       meta: {
-  //         total: data.length,
-  //         page: 1,
-  //         limit: 20,
-  //         pages: 1,
-  //       },
-  //       access: 'guest',
-  //     };
-  //   }
-
-  //   // Authorized: full pagination
-  //   const [data, total] = await Promise.all([
-  //     delegate.findMany({
-  //       where,
-  //       take: limit,
-  //       skip,
-  //       orderBy,
-  //     }),
-  //     delegate.count({ where }),
-  //   ]);
-
-  //   return {
-  //     data,
-  //     meta: {
-  //       total,
-  //       page,
-  //       limit,
-  //       pages: Math.ceil(total / limit),
-  //     },
-  //     access: 'authorized',
-  //   };
-  // }
-
-  // async findAllApollo(query: Record<string, any>, user: any) {
-  //   return this.ApolloLead('apolloLead', query, user);
-  // }
-
-  // async deleteLeads(params: { count?: number }) {
-  //   const MAX_DELETE = 5000; // max ekbar e delete kora jaabe
-  //   const requestedCount = params.count ?? 1000; // default 1000
-  //   const count = Math.min(requestedCount, MAX_DELETE);
-  //   if (!Number.isInteger(count) || count <= 0) {
-  //     throw new BadRequestException('Count must be a positive integer');
-  //   }
-  //   // Find oldest N records
-  //   const items = await this.prisma.leadData.findMany({
-  //     take: count,
-  //     orderBy: { created_at: 'asc' },
-  //     select: { id: true },
-  //   });
-  //   if (items.length === 0) {
-  //     return { requested: count, deleted: 0 };
-  //   }
-  //   const ids = items.map((i) => i.id);
-  //   // Delete by ids
-  //   const result = await this.prisma.leadData.deleteMany({
-  //     where: { id: { in: ids } },
-  //   });
-  //   return { requested: count, deleted: result.count };
-  // }
 
   // Build prisma where/orderBy from query
   private buildPrismaQuery(
@@ -707,17 +587,17 @@ export class LeadDataService {
     model: 'apolloLead',
     query: Record<string, any>,
     user: any,
-) {
+  ) {
     // Pagination setup
     const page = Number(query.page) > 0 ? Number(query.page) : 1;
     const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
     const skip = (page - 1) * limit;
 
     const where: any = {
-        deleted_at: null,
-        AND: [] // Initialize AND array
+      deleted_at: null,
+      AND: [], // Initialize AND array
     };
-    
+
     // ------------------------------------------------
     // 1. Annual Revenue Range Logic
     // ------------------------------------------------
@@ -725,173 +605,181 @@ export class LeadDataService {
     const maxRevenueStr = query.max_annual_revenue;
 
     if (minRevenueStr || maxRevenueStr) {
-        const minVal = minRevenueStr ? parseFloat(minRevenueStr) : 0;
-        const maxVal = maxRevenueStr ? parseFloat(maxRevenueStr) : Infinity;
+      const minVal = minRevenueStr ? parseFloat(minRevenueStr) : 0;
+      const maxVal = maxRevenueStr ? parseFloat(maxRevenueStr) : Infinity;
 
-        if (isNaN(minVal) || isNaN(maxVal) || minVal > maxVal) {
-             throw new BadRequestException('Invalid revenue range provided.');
-        }
+      if (isNaN(minVal) || isNaN(maxVal) || minVal > maxVal) {
+        throw new BadRequestException('Invalid revenue range provided.');
+      }
 
-        // Add the filter to the AND array. Since maxVal can be Infinity, 
-        // we only apply the lte condition if maxRevenueStr was actually provided.
-        const revenueFilter: any = { gte: minVal.toString() };
-        if (maxRevenueStr) {
-            revenueFilter.lte = maxVal.toString();
-        }
-        
-        where.AND.push({
-            annual_revenue: revenueFilter, 
-        });
+      // Add the filter to the AND array.
+      const revenueFilter: any = { gte: minVal.toString() };
+      if (maxRevenueStr) {
+        revenueFilter.lte = maxVal.toString();
+      }
+
+      where.AND.push({
+        annual_revenue: revenueFilter,
+      });
     }
 
     // ------------------------------------------------
     // 2. Employee Range Logic
     // ------------------------------------------------
-    // NOTE: Using query parameters 'min_employee' and 'max_employee'
-    //
-// ------------------------------------------------
-// 2. Employee Range Logic (The block that needs fixing)
-// ------------------------------------------------
-// NOTE: Using query parameters 'min_employee' and 'max_employee'
-const minEmployeeStr = query.min_employee; // Use min_employee from query
-const maxEmployeeStr = query.max_employee; // Use max_employee from query
+    const minEmployeeStr = query.min_employee; // Use min_employee from query
+    const maxEmployeeStr = query.max_employee; // Use max_employee from query
 
-if (minEmployeeStr || maxEmployeeStr) {
-    // Convert user inputs to numbers
-    const minVal = minEmployeeStr ? parseFloat(minEmployeeStr) : 0;
-    const maxVal = maxEmployeeStr ? parseFloat(maxEmployeeStr) : Infinity;
+    if (minEmployeeStr || maxEmployeeStr) {
+      // Convert user inputs to numbers
+      const minVal = minEmployeeStr ? parseFloat(minEmployeeStr) : 0;
+      const maxVal = maxEmployeeStr ? parseFloat(maxEmployeeStr) : Infinity;
 
-    // Check for basic validation
-    if (isNaN(minVal) || isNaN(maxVal) || minVal > maxVal) {
-         throw new BadRequestException('Invalid employee count range provided.');
-    }
+      // Check for basic validation
+      if (isNaN(minVal) || isNaN(maxVal) || minVal > maxVal) {
+        throw new BadRequestException('Invalid employee count range provided.');
+      }
 
-    // This is the CORRECT filter object structure for the 'employees' column
-    const employeeFilter: any = { gte: minVal.toString() };
-    if (maxEmployeeStr) {
+      // This is the CORRECT filter object structure for the 'employees' column (Note: uses string comparison)
+      const employeeFilter: any = { gte: minVal.toString() };
+      if (maxEmployeeStr) {
         employeeFilter.lte = maxVal.toString();
-    }
-    
-    // Push the filter that targets the correct database column 'employees'
-    where.AND.push({
+      }
+
+      // Push the filter that targets the correct database column 'employees'
+      where.AND.push({
         employees: employeeFilter,
-    });
-}
-// ------------------------------------------------
-// (The rest of your code, including the final filter loop, is correct 
-// because you correctly skip 'min_employee' and 'max_employee' there.)
+      });
+    }
 
     // ------------------------------------------------
     // 3. Global Search (q) Logic
     // ------------------------------------------------
     if (query.q) {
-        const searchTerm = String(query.q).trim();
+      const searchTerm = String(query.q).trim();
 
-        where.AND.push({
-            OR: [
-                { first_name: { contains: searchTerm, mode: 'insensitive' } },
-                { last_name: { contains: searchTerm, mode: 'insensitive' } },
-                { title: { contains: searchTerm, mode: 'insensitive' } },
-                { company_name: { contains: searchTerm, mode: 'insensitive' } },
-                { email: { contains: searchTerm, mode: 'insensitive' } },
-                { city: { contains: searchTerm, mode: 'insensitive' } },
-                { country: { contains: searchTerm, mode: 'insensitive' } },
-                { industry: { contains: searchTerm, mode: 'insensitive' } },
-                { keywords: { contains: searchTerm, mode: 'insensitive' } },
-                { website: { contains: searchTerm, mode: 'insensitive' } },
-            ],
-        });
+      where.AND.push({
+        OR: [
+          { first_name: { contains: searchTerm, mode: 'insensitive' } },
+          { last_name: { contains: searchTerm, mode: 'insensitive' } },
+          { title: { contains: searchTerm, mode: 'insensitive' } },
+          { company_name: { contains: searchTerm, mode: 'insensitive' } },
+          { email: { contains: searchTerm, mode: 'insensitive' } },
+          { city: { contains: searchTerm, mode: 'insensitive' } },
+          { country: { contains: searchTerm, mode: 'insensitive' } },
+          { industry: { contains: searchTerm, mode: 'insensitive' } },
+          { keywords: { contains: searchTerm, mode: 'insensitive' } },
+          { website: { contains: searchTerm, mode: 'insensitive' } },
+        ],
+      });
     }
 
     // ------------------------------------------------
     // 4. Specific/Generic Filter Loop
     // ------------------------------------------------
     for (const key of Object.keys(query)) {
-        // ✅ FIX: Include all min/max query parameters in the skip list
-        if (['page', 'limit', 'sortBy', 'order', 'q', 'min_annual_revenue', 'max_annual_revenue', 'min_employee', 'max_employee'].includes(key)) continue;
-        
-        const value = query[key];
-        if (!value) continue;
+      // FIX: Include all min/max query parameters in the skip list
+      if (
+        [
+          'page',
+          'limit',
+          'sortBy',
+          'order',
+          'q',
+          'min_annual_revenue',
+          'max_annual_revenue',
+          'min_employee',
+          'max_employee',
+        ].includes(key)
+      )
+        continue;
 
-        let values: string[] = [];
-        try {
-            values = Array.isArray(value) ? value : JSON.parse(value);
-            if (!Array.isArray(values)) values = [String(value)];
-        } catch {
-            values = [String(value)];
-        }
+      const value = query[key];
+      if (!value) continue;
 
-        // Custom filtering blocks (name, job_titles, keyword, etc.)
-        if (key === 'name') {
-            where.AND.push({
-                OR: values.flatMap((v) => [
-                    { first_name: { contains: v, mode: 'insensitive' } },
-                    { last_name: { contains: v, mode: 'insensitive' } },
-                ]),
-            });
-        }
-        // ... (other custom blocks like job_titles, keyword, company_linkedin, etc. remain the same)
-        else if (key === 'job_titles' || key === 'job_titless') {
-            where.AND.push({ OR: values.map((v) => ({ title: { contains: v, mode: 'insensitive' } })) });
-        }
-        else if (key === 'keyword') {
-            where.AND.push({ OR: values.map((v) => ({ keywords: { contains: v, mode: 'insensitive' } })) });
-        }
-        // ... (other custom blocks)
-        else {
-            // Default generic filter
-            where.AND.push({
-                OR: values.map((v) => ({
-                    [key]: { contains: v, mode: 'insensitive' },
-                })),
-            });
-        }
+      let values: string[] = [];
+      try {
+        values = Array.isArray(value) ? value : JSON.parse(value);
+        if (!Array.isArray(values)) values = [String(value)];
+      } catch {
+        values = [String(value)];
+      }
+
+      // Custom filtering blocks (name, job_titles, keyword, etc.)
+      if (key === 'name') {
+        where.AND.push({
+          OR: values.flatMap((v) => [
+            { first_name: { contains: v, mode: 'insensitive' } },
+            { last_name: { contains: v, mode: 'insensitive' } },
+          ]),
+        });
+      }
+      // ... (other custom blocks like job_titles, keyword, company_linkedin, etc. remain the same)
+      else if (key === 'job_titles' || key === 'job_titless') {
+        where.AND.push({
+          OR: values.map((v) => ({
+            title: { contains: v, mode: 'insensitive' },
+          })),
+        });
+      } else if (key === 'keyword') {
+        where.AND.push({
+          OR: values.map((v) => ({
+            keywords: { contains: v, mode: 'insensitive' },
+          })),
+        });
+      }
+      // ... (other custom blocks)
+      else {
+        // Default generic filter
+        where.AND.push({
+          OR: values.map((v) => ({
+            [key]: { contains: v, mode: 'insensitive' },
+          })),
+        });
+      }
     }
 
     if (where.AND.length === 0) {
-        delete where.AND;
+      delete where.AND;
     }
-    
+
     // ------------------------------------------------
     // 5. Final Query Execution
     // ------------------------------------------------
     const sortBy = query.sortBy || 'created_at';
     const order =
-        query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-            ? (query.order.toLowerCase() as Prisma.SortOrder)
-            : Prisma.SortOrder.desc;
+      query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+        ? (query.order.toLowerCase() as Prisma.SortOrder)
+        : Prisma.SortOrder.desc;
     const orderBy = { [sortBy]: order };
 
     const delegate: {
-        findMany: (args?: any) => Promise<any[]>;
-        count: (args?: any) => Promise<number>;
+      findMany: (args?: any) => Promise<any[]>;
+      count: (args?: any) => Promise<number>;
     } = (this.prisma as any)[model];
 
     const [data, total] = await Promise.all([
-        delegate.findMany({
-            where,
-            take: limit,
-            skip,
-            orderBy,
-        }),
-        delegate.count({ where }),
+      delegate.findMany({
+        where,
+        take: limit,
+        skip,
+        orderBy,
+      }),
+      delegate.count({ where }),
     ]);
 
     return {
-        success: true,
-        message: 'Data fetched successfully',
-        data,
-        meta: {
-            total,
-            page,
-            limit,
-            pages: Math.ceil(total / limit),
-        },
-        access: 'authorized',
+      success: true,
+      message: 'Data fetched successfully',
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+      access: 'authorized',
     };
-}
-
-
+  }
 
   async getJobTitles(search?: string) {
     try {
@@ -1170,7 +1058,6 @@ if (minEmployeeStr || maxEmployeeStr) {
       throw new BadRequestException('Annual revenues fetch failed');
     }
   }
-
 
   async getDemoed(search?: string) {
     try {
@@ -1576,8 +1463,8 @@ if (minEmployeeStr || maxEmployeeStr) {
     const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
     const skip = (page - 1) * limit;
 
-    // ✅ FIX 1: AND Array initialization (Fixes 'undefined' crash)
-    const where: any = { AND: [] };
+    // FIX: Added deleted_at: null for consistency (soft delete)
+    const where: any = { deleted_at: null, AND: [] };
 
     // 🔍 Global Search Logic
     if (query.q) {
@@ -1876,5 +1763,3 @@ if (minEmployeeStr || maxEmployeeStr) {
     };
   }
 }
-
-// ==============================
