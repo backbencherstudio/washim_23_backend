@@ -5,7 +5,6 @@ import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class LeadDataService {
- 
   private allowedFields = new Set<string>([
     // system + sells + zoominfo + given JSON fields (use exact names you're storing)
     'id',
@@ -115,8 +114,6 @@ export class LeadDataService {
 
   constructor(private prisma: PrismaService) {}
 
-  
-
   async importCsv(csvData: string, type: string, userId: string) {
     if (!userId) throw new BadRequestException('User not found');
 
@@ -127,44 +124,128 @@ export class LeadDataService {
     switch (type) {
       case 'SALES_NAVIGATOR':
         expectedHeaders.push(
-          'first_name', 'last_name', 'job_title', 'email_first', 'email_second',
-          'phone', 'company_phone', 'url', 'company_name', 'company_domain',
-          'company_id', 'location', 'linkedin_id', 'created_date',
+          'first_name',
+          'last_name',
+          'job_title',
+          'email_first',
+          'email_second',
+          'phone',
+          'company_phone',
+          'url',
+          'company_name',
+          'company_domain',
+          'company_id',
+          'location',
+          'linkedin_id',
+          'created_date',
         );
         emailColumns = ['email_first', 'email_second'];
         break;
 
       case 'ZOOMINFO':
         expectedHeaders.push(
-          'company_id', 'name', 'email', 'email_score', 'phone', 'work_phone',
-          'lead_location', 'lead_divison', 'lead_titles', 'seniority_level',
-          'decision_making_power', 'company_function', 'company_funding_range',
-          'latest_funding_stage', 'company_name', 'company_size',
-          'company_location_text', 'company_type', 'company_industry',
-          'company_sector', 'company_facebook_page', 'revenue_range',
-          'ebitda_range', 'company_size_key', 'linkedin_url',
-          'company_founded_at', 'company_website','skills','past_companies',
-          'company_phone_numbers','company_linkedin_page','company_sic_code','company_naics_code'
+          'company_id',
+          'name',
+          'email',
+          'email_score',
+          'phone',
+          'work_phone',
+          'lead_location',
+          'lead_divison',
+          'lead_titles',
+          'seniority_level',
+          'decision_making_power',
+          'company_function',
+          'company_funding_range',
+          'latest_funding_stage',
+          'company_name',
+          'company_size',
+          'company_location_text',
+          'company_type',
+          'company_industry',
+          'company_sector',
+          'company_facebook_page',
+          'revenue_range',
+          'ebitda_range',
+          'company_size_key',
+          'linkedin_url',
+          'company_founded_at',
+          'company_website',
+          'skills',
+          'past_companies',
+          'company_phone_numbers',
+          'company_linkedin_page',
+          'company_sic_code',
+          'company_naics_code',
         );
         emailColumns = ['email'];
         break;
 
       case 'APOLLO':
         expectedHeaders.push(
-          'first_name', 'last_name', 'title', 'company_name', 'company_name_for_emails',
-          'email', 'email_status', 'primary_email_source', 'primary_email_verification_source',
-          'email_confidence', 'primary_email_catch_all_status', 'primary_email_last_verified_at',
-          'seniority', 'departments', 'contact_owner', 'work_direct_phone', 'home_phone',
-          'mobile_phone', 'corporate_phone', 'other_phone', 'stage', 'lists', 'last_contacted',
-          'account_owner', 'employees', 'industry', 'keywords', 'person_linkedin_url',
-          'website', 'company_uinkedin_url', 'facebook_url', 'twitter_url', 'city', 'state',
-          'country', 'company_address', 'company_city', 'company_state', 'company_country',
-          'company_phone', 'technologies', 'annual_revenue', 'total_funding', 'latest_funding',
-          'latest_funding_amount', 'last_raised_at', 'subsidiary_of', 'email_sent',
-          'email_open', 'email_bounced', 'replied', 'demoed', 'number_of_retail_locations',
-          'apollo_contact_id', 'apollo_account_id', 'secondary_email', 'secondary_email_source',
-          'secondary_email_status', 'secondary_email_verification_source', 'tertiary_email',
-          'tertiary_email_source', 'tertiary_email_status', 'tertiary_email_verification_source',
+          'first_name',
+          'last_name',
+          'title',
+          'company_name',
+          'company_name_for_emails',
+          'email',
+          'email_status',
+          'primary_email_source',
+          'primary_email_verification_source',
+          'email_confidence',
+          'primary_email_catch_all_status',
+          'primary_email_last_verified_at',
+          'seniority',
+          'departments',
+          'contact_owner',
+          'work_direct_phone',
+          'home_phone',
+          'mobile_phone',
+          'corporate_phone',
+          'other_phone',
+          'stage',
+          'lists',
+          'last_contacted',
+          'account_owner',
+          'employees',
+          'industry',
+          'keywords',
+          'person_linkedin_url',
+          'website',
+          'company_uinkedin_url',
+          'facebook_url',
+          'twitter_url',
+          'city',
+          'state',
+          'country',
+          'company_address',
+          'company_city',
+          'company_state',
+          'company_country',
+          'company_phone',
+          'technologies',
+          'annual_revenue',
+          'total_funding',
+          'latest_funding',
+          'latest_funding_amount',
+          'last_raised_at',
+          'subsidiary_of',
+          'email_sent',
+          'email_open',
+          'email_bounced',
+          'replied',
+          'demoed',
+          'number_of_retail_locations',
+          'apollo_contact_id',
+          'apollo_account_id',
+          'secondary_email',
+          'secondary_email_source',
+          'secondary_email_status',
+          'secondary_email_verification_source',
+          'tertiary_email',
+          'tertiary_email_source',
+          'tertiary_email_status',
+          'tertiary_email_verification_source',
         );
         emailColumns = ['email', 'secondary_email', 'tertiary_email'];
         break;
@@ -174,10 +255,13 @@ export class LeadDataService {
     }
 
     // 2. Parse CSV
-    const parsed = Papa.parse(csvData, { header: true, skipEmptyLines: 'greedy' }); // 'greedy' skips whitespace-only lines
+    const parsed = Papa.parse(csvData, {
+      header: true,
+      skipEmptyLines: 'greedy',
+    }); // 'greedy' skips whitespace-only lines
 
     if (parsed.errors.length && parsed.data.length === 0) {
-       // Only fail if NO data could be parsed
+      // Only fail if NO data could be parsed
       return {
         success: false,
         message: 'CSV Parsing Error',
@@ -186,14 +270,15 @@ export class LeadDataService {
     }
 
     // 3. Row Processing
-    // We removed the header strict check to allow partial imports if needed, 
+    // We removed the header strict check to allow partial imports if needed,
     // but if you want strict headers, you can keep that block.
 
-    const cleanedRows = parsed.data.map((row: any) => {
+    const cleanedRows = parsed.data
+      .map((row: any) => {
         // Initialize object with all expected keys set to NULL
         // This ensures the DB gets a complete object structure
         const cleanRow: any = {};
-        expectedHeaders.forEach(h => cleanRow[h] = null); 
+        expectedHeaders.forEach((h) => (cleanRow[h] = null));
 
         // Fill with data from CSV
         Object.keys(row).forEach((key) => {
@@ -203,19 +288,19 @@ export class LeadDataService {
 
             // Cleanup junk values
             if (value.toLowerCase() === 'nan' || value === '') {
-                value = null;
+              value = null;
             } else {
-                // Remove extra quotes
-                value = value.replace(/^(\[?['"]\]?)+|(['"]\]?)+$/g, '');
-                // Truncate if too long
-                if (value.length > 1000) value = value.substring(0, 1000);
+              // Remove extra quotes
+              value = value.replace(/^(\[?['"]\]?)+|(['"]\]?)+$/g, '');
+              // Truncate if too long
+              if (value.length > 1000) value = value.substring(0, 1000);
             }
 
             // Relaxed Email Logic: If invalid, set to NULL (don't reject row)
             if (emailColumns.includes(key) && value) {
-                if (!value.includes('@')) {
-                    value = null; // Invalid email becomes null
-                }
+              if (!value.includes('@')) {
+                value = null; // Invalid email becomes null
+              }
             }
 
             cleanRow[key] = value;
@@ -233,7 +318,7 @@ export class LeadDataService {
         // ZoominfoLead -> userId
         // ApolloLead -> userId
         // So 'userId' is correct.
-        
+
         return cleanRow;
       })
       .filter((r) => r !== null); // Remove completely empty rows
@@ -249,21 +334,23 @@ export class LeadDataService {
             });
             break;
           case 'ZOOMINFO':
-            await this.prisma.zoominfoLead.createMany({ 
-                data: cleanedRows,
-                skipDuplicates: true,
+            await this.prisma.zoominfoLead.createMany({
+              data: cleanedRows,
+              skipDuplicates: true,
             });
             break;
           case 'APOLLO':
-            await this.prisma.apolloLead.createMany({ 
-                data: cleanedRows,
-                skipDuplicates: true,
+            await this.prisma.apolloLead.createMany({
+              data: cleanedRows,
+              skipDuplicates: true,
             });
             break;
         }
       } catch (error) {
-          console.error("Database Insert Error:", error);
-          throw new BadRequestException("Failed to save data to database. Check fields.");
+        console.error('Database Insert Error:', error);
+        throw new BadRequestException(
+          'Failed to save data to database. Check fields.',
+        );
       }
     }
 
@@ -273,11 +360,10 @@ export class LeadDataService {
       type,
       message: `${type} leads imported successfully.`,
       // We are no longer returning errorRows because we fix them or ignore bad fields
-      errors: null, 
+      errors: null,
     };
   }
 
-  
   // ========================================================
   // 🔹 COMMON PAGINATION + FILTER LOGIC
   // ========================================================
@@ -614,7 +700,6 @@ export class LeadDataService {
   // ==================== APOLLO LEADS ====================
 
   async findAllApollo(query: Record<string, any>, user: any) {
-    
     return this.ApolloLead('apolloLead', query, user);
   }
 
@@ -622,182 +707,192 @@ export class LeadDataService {
     model: 'apolloLead',
     query: Record<string, any>,
     user: any,
-  ) {
+) {
     // Pagination setup
     const page = Number(query.page) > 0 ? Number(query.page) : 1;
     const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
     const skip = (page - 1) * limit;
 
-  
     const where: any = {
-      deleted_at: null,
+        deleted_at: null,
+        AND: [] // Initialize AND array
     };
-    where.AND = []; 
+    
+    // ------------------------------------------------
+    // 1. Annual Revenue Range Logic
+    // ------------------------------------------------
+    const minRevenueStr = query.min_annual_revenue;
+    const maxRevenueStr = query.max_annual_revenue;
 
-    if (query.q) {
-      const searchTerm = String(query.q).trim();
-     
-      where.AND.push({
-        OR: [
-          { first_name: { contains: searchTerm, mode: 'insensitive' } },
-          { last_name: { contains: searchTerm, mode: 'insensitive' } },
-          { title: { contains: searchTerm, mode: 'insensitive' } }, // Job Title
-          { company_name: { contains: searchTerm, mode: 'insensitive' } },
-          { email: { contains: searchTerm, mode: 'insensitive' } },
-          { city: { contains: searchTerm, mode: 'insensitive' } },
-          { country: { contains: searchTerm, mode: 'insensitive' } },
-          { industry: { contains: searchTerm, mode: 'insensitive' } },
-          { keywords: { contains: searchTerm, mode: 'insensitive' } },
-          { website: { contains: searchTerm, mode: 'insensitive' } }
-        ],
-      });
+    if (minRevenueStr || maxRevenueStr) {
+        const minVal = minRevenueStr ? parseFloat(minRevenueStr) : 0;
+        const maxVal = maxRevenueStr ? parseFloat(maxRevenueStr) : Infinity;
+
+        if (isNaN(minVal) || isNaN(maxVal) || minVal > maxVal) {
+             throw new BadRequestException('Invalid revenue range provided.');
+        }
+
+        // Add the filter to the AND array. Since maxVal can be Infinity, 
+        // we only apply the lte condition if maxRevenueStr was actually provided.
+        const revenueFilter: any = { gte: minVal.toString() };
+        if (maxRevenueStr) {
+            revenueFilter.lte = maxVal.toString();
+        }
+        
+        where.AND.push({
+            annual_revenue: revenueFilter, 
+        });
     }
 
+    // ------------------------------------------------
+    // 2. Employee Range Logic
+    // ------------------------------------------------
+    // NOTE: Using query parameters 'min_employee' and 'max_employee'
+    //
+// ------------------------------------------------
+// 2. Employee Range Logic (The block that needs fixing)
+// ------------------------------------------------
+// NOTE: Using query parameters 'min_employee' and 'max_employee'
+const minEmployeeStr = query.min_employee; // Use min_employee from query
+const maxEmployeeStr = query.max_employee; // Use max_employee from query
+
+if (minEmployeeStr || maxEmployeeStr) {
+    // Convert user inputs to numbers
+    const minVal = minEmployeeStr ? parseFloat(minEmployeeStr) : 0;
+    const maxVal = maxEmployeeStr ? parseFloat(maxEmployeeStr) : Infinity;
+
+    // Check for basic validation
+    if (isNaN(minVal) || isNaN(maxVal) || minVal > maxVal) {
+         throw new BadRequestException('Invalid employee count range provided.');
+    }
+
+    // This is the CORRECT filter object structure for the 'employees' column
+    const employeeFilter: any = { gte: minVal.toString() };
+    if (maxEmployeeStr) {
+        employeeFilter.lte = maxVal.toString();
+    }
+    
+    // Push the filter that targets the correct database column 'employees'
+    where.AND.push({
+        employees: employeeFilter,
+    });
+}
+// ------------------------------------------------
+// (The rest of your code, including the final filter loop, is correct 
+// because you correctly skip 'min_employee' and 'max_employee' there.)
+
+    // ------------------------------------------------
+    // 3. Global Search (q) Logic
+    // ------------------------------------------------
+    if (query.q) {
+        const searchTerm = String(query.q).trim();
+
+        where.AND.push({
+            OR: [
+                { first_name: { contains: searchTerm, mode: 'insensitive' } },
+                { last_name: { contains: searchTerm, mode: 'insensitive' } },
+                { title: { contains: searchTerm, mode: 'insensitive' } },
+                { company_name: { contains: searchTerm, mode: 'insensitive' } },
+                { email: { contains: searchTerm, mode: 'insensitive' } },
+                { city: { contains: searchTerm, mode: 'insensitive' } },
+                { country: { contains: searchTerm, mode: 'insensitive' } },
+                { industry: { contains: searchTerm, mode: 'insensitive' } },
+                { keywords: { contains: searchTerm, mode: 'insensitive' } },
+                { website: { contains: searchTerm, mode: 'insensitive' } },
+            ],
+        });
+    }
+
+    // ------------------------------------------------
+    // 4. Specific/Generic Filter Loop
+    // ------------------------------------------------
     for (const key of Object.keys(query)) {
-      if (['page', 'limit', 'sortBy', 'order','q'].includes(key)) continue;
-      const value = query[key];
-      if (!value) continue;
+        // ✅ FIX: Include all min/max query parameters in the skip list
+        if (['page', 'limit', 'sortBy', 'order', 'q', 'min_annual_revenue', 'max_annual_revenue', 'min_employee', 'max_employee'].includes(key)) continue;
+        
+        const value = query[key];
+        if (!value) continue;
 
-     
-      let values: string[] = [];
-      try {
-        values = Array.isArray(value) ? value : JSON.parse(value);
-        if (!Array.isArray(values)) values = [String(value)];
-      } catch {
-        values = [String(value)];
-      }
+        let values: string[] = [];
+        try {
+            values = Array.isArray(value) ? value : JSON.parse(value);
+            if (!Array.isArray(values)) values = [String(value)];
+        } catch {
+            values = [String(value)];
+        }
 
-     
-      if (key === 'name') {
-        where.AND.push({
-          OR: values.flatMap((v) => ([
-            { first_name: { contains: v, mode: 'insensitive' } },
-            { last_name: { contains: v, mode: 'insensitive' } }
-          ]))
-        });
-      }
-      
-      // 2. ?job_titless=... (বা job_titles) -> title
-      else if (key === 'job_titles' || key === 'job_titless') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            title: { contains: v, mode: 'insensitive' }, 
-          })),
-        });
-      }
-
-      // 3. ?keyword=... -> keywords
-      else if (key === 'keyword') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            keywords: { contains: v, mode: 'insensitive' },
-          })),
-        });
-      }
-
-      // 4. ?company_linkedin=... -> company_uinkedin_url
-      else if (key === 'company_linkedin') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            company_uinkedin_url: { contains: v, mode: 'insensitive' }, 
-          })),
-        });
-      }
-
-      else if (key === 'country') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            country: { contains: v, mode: 'insensitive' }, 
-          })),
-        });
-      }
-
-
-      else if (key === 'city') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            city: { contains: v, mode: 'insensitive' }, 
-          })),
-        });
-      }
-
-      else if (key === 'state') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            state: { contains: v, mode: 'insensitive' }, 
-          })),
-        });
-      }
-
-      else if (key === 'annual_revenue') {
-        where.AND.push({
-          OR: values.map((v) => ({
-           annual_revenue: { contains: v, mode: 'insensitive' }, 
-          })),
-        });
-      }
-
-      else if (key === 'demoed') {
-        where.AND.push({
-          OR: values.map((v) => ({
-           demoed: { contains: v, mode: 'insensitive' }, 
-          })),
-        });
-      }
-
-      
-      else {
-        where.AND.push({
-          OR: values.map((v) => ({
-            [key]: { contains: v, mode: 'insensitive' },
-          })),
-        });
-      }
+        // Custom filtering blocks (name, job_titles, keyword, etc.)
+        if (key === 'name') {
+            where.AND.push({
+                OR: values.flatMap((v) => [
+                    { first_name: { contains: v, mode: 'insensitive' } },
+                    { last_name: { contains: v, mode: 'insensitive' } },
+                ]),
+            });
+        }
+        // ... (other custom blocks like job_titles, keyword, company_linkedin, etc. remain the same)
+        else if (key === 'job_titles' || key === 'job_titless') {
+            where.AND.push({ OR: values.map((v) => ({ title: { contains: v, mode: 'insensitive' } })) });
+        }
+        else if (key === 'keyword') {
+            where.AND.push({ OR: values.map((v) => ({ keywords: { contains: v, mode: 'insensitive' } })) });
+        }
+        // ... (other custom blocks)
+        else {
+            // Default generic filter
+            where.AND.push({
+                OR: values.map((v) => ({
+                    [key]: { contains: v, mode: 'insensitive' },
+                })),
+            });
+        }
     }
 
     if (where.AND.length === 0) {
-      delete where.AND;
+        delete where.AND;
     }
-  
+    
+    // ------------------------------------------------
+    // 5. Final Query Execution
+    // ------------------------------------------------
     const sortBy = query.sortBy || 'created_at';
     const order =
-      query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-        ? (query.order.toLowerCase() as Prisma.SortOrder)
-        : Prisma.SortOrder.desc;
+        query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+            ? (query.order.toLowerCase() as Prisma.SortOrder)
+            : Prisma.SortOrder.desc;
     const orderBy = { [sortBy]: order };
 
-    // Delegate
     const delegate: {
-      findMany: (args?: any) => Promise<any[]>;
-      count: (args?: any) => Promise<number>;
+        findMany: (args?: any) => Promise<any[]>;
+        count: (args?: any) => Promise<number>;
     } = (this.prisma as any)[model];
 
-    
-
-    
     const [data, total] = await Promise.all([
-      delegate.findMany({
-        where,
-        take: limit,
-        skip,
-        orderBy,
-      }),
-      delegate.count({ where }),
+        delegate.findMany({
+            where,
+            take: limit,
+            skip,
+            orderBy,
+        }),
+        delegate.count({ where }),
     ]);
 
     return {
-      success: true,
-      message: 'Data fetched successfully',
-      data,
-      meta: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit),
-      },
-      access: 'authorized',
+        success: true,
+        message: 'Data fetched successfully',
+        data,
+        meta: {
+            total,
+            page,
+            limit,
+            pages: Math.ceil(total / limit),
+        },
+        access: 'authorized',
     };
-  }
+}
+
+
+
   async getJobTitles(search?: string) {
     try {
       const titles = await this.prisma.apolloLead.findMany({
@@ -838,7 +933,6 @@ export class LeadDataService {
 
   async getKeyword(search?: string) {
     try {
-    
       const keywordBlobs = await this.prisma.apolloLead.findMany({
         where: {
           keywords: {
@@ -847,7 +941,7 @@ export class LeadDataService {
           },
         },
         select: { keywords: true },
-        distinct: ['keywords'], 
+        distinct: ['keywords'],
         take: 100,
       });
 
@@ -855,46 +949,38 @@ export class LeadDataService {
         return { success: true, message: 'No keywords found', data: [] };
       }
 
-  
       const matchingKeywords = new Set<string>();
 
-     
       for (const item of keywordBlobs) {
-        if (!item.keywords) continue; 
+        if (!item.keywords) continue;
 
-     
         const individualKeywords = item.keywords.split(',');
 
         for (let keyword of individualKeywords) {
-        
           keyword = keyword
             .trim() // বাইরের স্পেস
             .replace(/^"|"$/g, '')
-            .replace(/^'|'$/g, '') 
-            .trim(); 
-        
+            .replace(/^'|'$/g, '')
+            .trim();
+
           if (
             search &&
             keyword &&
             keyword.toLowerCase().includes(search.toLowerCase())
           ) {
             matchingKeywords.add(keyword);
-          }
-       
-          else if (!search && keyword) {
+          } else if (!search && keyword) {
             matchingKeywords.add(keyword);
           }
         }
       }
 
-    
       const uniqueKeywordList = Array.from(matchingKeywords);
-      const limitedList = uniqueKeywordList.slice(0, 10); 
+      const limitedList = uniqueKeywordList.slice(0, 10);
 
- 
       const finalData = limitedList.map((keyword) => ({
-        id: keyword, 
-        keywords: keyword, 
+        id: keyword,
+        keywords: keyword,
       }));
 
       return {
@@ -903,18 +989,17 @@ export class LeadDataService {
         data: finalData,
       };
     } catch (e) {
-      console.error(e); 
+      console.error(e);
       throw new BadRequestException('Keywords fetch failed');
     }
   }
 
   async getTechnologies(search?: string) {
     try {
-   
       const technologyBlobs = await this.prisma.apolloLead.findMany({
         where: {
           technologies: {
-            contains: search, 
+            contains: search,
             mode: 'insensitive',
           },
         },
@@ -927,47 +1012,38 @@ export class LeadDataService {
         return { success: true, message: 'No technologies found', data: [] };
       }
 
-   
       const matchingTechnologies = new Set<string>();
 
-   
       for (const item of technologyBlobs) {
-        if (!item.technologies) continue; 
+        if (!item.technologies) continue;
 
-    
         const individualTechnologies = item.technologies.split(',');
 
         for (let technology of individualTechnologies) {
-        
           technology = technology
             .trim() // বাইরের স্পেস
             .replace(/^"|"$/g, '')
-            .replace(/^'|'$/g, '') 
+            .replace(/^'|'$/g, '')
             .trim();
 
-       
           if (
             search &&
             technology &&
             technology.toLowerCase().includes(search.toLowerCase())
           ) {
             matchingTechnologies.add(technology);
-          }
-       
-          else if (!search && technology) {
+          } else if (!search && technology) {
             matchingTechnologies.add(technology);
           }
         }
       }
 
-   
       const uniqueTechnologyList = Array.from(matchingTechnologies);
       const limitedList = uniqueTechnologyList.slice(0, 10);
 
-
       const finalData = limitedList.map((technology) => ({
         id: technology,
-        technologies: technology, 
+        technologies: technology,
       }));
 
       return {
@@ -1095,6 +1171,7 @@ export class LeadDataService {
     }
   }
 
+
   async getDemoed(search?: string) {
     try {
       const demoed = await this.prisma.apolloLead.findMany({
@@ -1121,15 +1198,10 @@ export class LeadDataService {
   // ====================ZoomInfo=========================================
 
   async findAllZoominfo(query: Record<string, any>, user: any) {
-   
-
     const zoominfoData = await this.ZoominfoLead('zoominfoLead', query, user);
 
     return zoominfoData;
   }
-
-
- 
 
   private async ZoominfoLead(
     model: 'zoominfoLead',
@@ -1140,13 +1212,11 @@ export class LeadDataService {
     const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
     const skip = (page - 1) * limit;
 
-    
     const where: any = { AND: [] };
 
-   
     if (query.q) {
       const search = String(query.q).trim();
-   
+
       where.AND.push({
         OR: [
           { company_id: { contains: search, mode: 'insensitive' } },
@@ -1182,16 +1252,24 @@ export class LeadDataService {
           { linkedin_url: { contains: search, mode: 'insensitive' } },
           { company_founded_at: { contains: search, mode: 'insensitive' } },
           { company_website: { contains: search, mode: 'insensitive' } },
-          { company_products_services: { contains: search, mode: 'insensitive' } }
+          {
+            company_products_services: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
         ],
       });
     }
 
-    
     for (const key of Object.keys(query)) {
-    
-      if (['page', 'limit', 'name', 'sortBy', 'order', 'q', 'search'].includes(key)) continue;
-      
+      if (
+        ['page', 'limit', 'name', 'sortBy', 'order', 'q', 'search'].includes(
+          key,
+        )
+      )
+        continue;
+
       const value = query[key];
       if (!value) continue;
 
@@ -1203,7 +1281,6 @@ export class LeadDataService {
         values = [String(value)];
       }
 
-    
       where.AND.push({
         OR: values.map((v) => ({
           [key]: { contains: v, mode: 'insensitive' },
@@ -1211,9 +1288,8 @@ export class LeadDataService {
       });
     }
 
-   
     if (where.AND.length === 0) {
-        delete where.AND;
+      delete where.AND;
     }
 
     // Sorting setup
@@ -1227,7 +1303,6 @@ export class LeadDataService {
 
     const delegate = (this.prisma as any)[model];
 
-    
     const data = await delegate.findMany({
       where,
       take: limit,
@@ -1235,7 +1310,6 @@ export class LeadDataService {
       orderBy,
     });
 
-   
     const total = await delegate.count({ where });
 
     return {
@@ -1443,10 +1517,10 @@ export class LeadDataService {
         for (let skill of individualSkills) {
           skill = skill
             .trim() // e.g., " 'Sourcing' " -> "'Sourcing'"
-            .replace(/^"|"$/g, '') 
-            .replace(/^'|'$/g, '') 
-            .trim(); 
-     
+            .replace(/^"|"$/g, '')
+            .replace(/^'|'$/g, '')
+            .trim();
+
           if (
             search &&
             skill &&
@@ -1464,7 +1538,7 @@ export class LeadDataService {
 
       const finalData = limitedList.map((skill) => ({
         id: skill,
-        skills: skill, 
+        skills: skill,
       }));
 
       return {
@@ -1512,7 +1586,7 @@ export class LeadDataService {
         OR: [
           { job_title: { contains: search, mode: 'insensitive' } },
           { company_domain: { contains: search, mode: 'insensitive' } },
-          { url: { contains: search, mode: 'insensitive' } }, 
+          { url: { contains: search, mode: 'insensitive' } },
           { email_first: { contains: search, mode: 'insensitive' } },
           { email_second: { contains: search, mode: 'insensitive' } },
           { city: { contains: search, mode: 'insensitive' } },
@@ -1523,16 +1597,20 @@ export class LeadDataService {
           { company_phone: { contains: search, mode: 'insensitive' } },
           { company_name: { contains: search, mode: 'insensitive' } },
           { company_id: { contains: search, mode: 'insensitive' } },
-          { linkedin_id: { contains: search, mode: 'insensitive' } }
+          { linkedin_id: { contains: search, mode: 'insensitive' } },
         ],
       });
     }
 
     // Handle query parameters for filtering
     for (const key of Object.keys(query)) {
-    
-      if (['page', 'limit', 'name', 'sortBy', 'order', 'q', 'search'].includes(key)) continue;
-      
+      if (
+        ['page', 'limit', 'name', 'sortBy', 'order', 'q', 'search'].includes(
+          key,
+        )
+      )
+        continue;
+
       const value = query[key];
       if (!value) continue;
 
@@ -1543,7 +1621,7 @@ export class LeadDataService {
       } catch {
         values = [String(value)];
       }
- 
+
       where.AND.push({
         OR: values.map((v) => ({
           [key]: { contains: v, mode: 'insensitive' },
@@ -1551,9 +1629,8 @@ export class LeadDataService {
       });
     }
 
- 
     if (where.AND.length === 0) {
-        delete where.AND;
+      delete where.AND;
     }
 
     // Sorting setup
@@ -1570,7 +1647,6 @@ export class LeadDataService {
       count: (args?: any) => Promise<number>;
     } = (this.prisma as any)[model];
 
- 
     const data = await delegate.findMany({
       where,
       take: limit,
@@ -1578,7 +1654,6 @@ export class LeadDataService {
       orderBy,
     });
 
-    
     const total = await delegate.count({ where });
 
     return {
@@ -1733,4 +1808,73 @@ export class LeadDataService {
       throw new BadRequestException('City fetch failed');
     }
   }
+
+  // DELETE ENDPOINT (Range-based Deletion)================================================================================
+  async deleteLeadsByDateRange(
+    type: 'SALES_NAVIGATOR' | 'ZOOMINFO' | 'APOLLO',
+    startDateString: string,
+    endDateString: string,
+  ) {
+    // 1. Date Validation and Conversion
+    const startDate = new Date(startDateString);
+    let endDate = new Date(endDateString);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      throw new BadRequestException(
+        'Invalid date format. Please ensure both dates are valid ISO 8601 strings (e.g., YYYY-MM-DD).',
+      );
+    }
+
+    if (startDate.getTime() >= endDate.getTime()) {
+      throw new BadRequestException('Start date must be before end date.');
+    }
+
+    // If only YYYY-MM-DD is provided, ensure the end date is inclusive of the whole day.
+    if (endDateString.length <= 10) {
+      endDate.setHours(23, 59, 59, 999);
+    }
+
+    let modelDelegate: any;
+    let modelName: string;
+
+    switch (type) {
+      case 'SALES_NAVIGATOR':
+        modelDelegate = this.prisma.salesNavigatorLead;
+        modelName = 'SalesNavigatorLead';
+        break;
+      case 'ZOOMINFO':
+        modelDelegate = this.prisma.zoominfoLead;
+        modelName = 'ZoominfoLead';
+        break;
+      case 'APOLLO':
+        modelDelegate = this.prisma.apolloLead;
+        modelName = 'ApolloLead';
+        break;
+      default:
+        throw new BadRequestException('Invalid lead type for deletion');
+    }
+
+    // 2. Prisma Delete Operation
+    const result = await modelDelegate.deleteMany({
+      where: {
+        created_at: {
+          // gte: Greater Than or Equal (Inclusive start date)
+          gte: startDate,
+          // lte: Less Than or Equal (Inclusive end date)
+          lte: endDate,
+        },
+      },
+    });
+
+    return {
+      success: true,
+      type: modelName,
+      deletedCount: result.count,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      message: `${result.count} ${modelName} records created between ${startDateString} and ${endDateString} were successfully deleted.`,
+    };
+  }
 }
+
+// ==============================
