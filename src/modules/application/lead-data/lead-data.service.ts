@@ -1,10 +1,12 @@
+// File: src/modules/application/lead-data/lead-data.service.ts
+
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as Papa from 'papaparse';
+import * as fs from 'fs';
 import { PrismaService } from 'src/prisma/prisma.service';
 
-// 💡 FIX: Define a minimal interface to satisfy TypeScript's strict type checking
-// when dynamically calling createMany on different model delegates.
+// 💡 Helper interface for type safety when dynamically calling createMany
 interface LeadDelegate {
   createMany: (args: {
     data: any[];
@@ -58,7 +60,7 @@ export class LeadDataService {
     'ebitda_range',
     'last_funding_stage',
     'company_size_key',
-    // plus the fields from the Apollo JSON - include them all as in your model:
+    // Apollo fields
     'title',
     'company_name_for_emails',
     'email_status',
@@ -124,263 +126,154 @@ export class LeadDataService {
 
   constructor(private prisma: PrismaService) {}
 
-  async importCsv(csvData: string, type: string, userId: string) {
+  // =========================================================================
+  // ⭐ STREAMING IMPORT METHOD (Replaces importCsv for large file stability)
+  // =========================================================================
+  async importCsvStream(filePath: string, type: string, userId: string) {
     if (!userId) throw new BadRequestException('User not found');
 
-    // 1. Define headers based on type
+    const BATCH_SIZE = 5000;
+    let insertedCount = 0;
+    let batchBuffer: any[] = [];
+    
+    // 1. Get Delegate and Headers
+    const rawDelegate = 
+        type === 'SALES_NAVIGATOR' ? this.prisma.salesNavigatorLead :
+        type === 'ZOOMINFO' ? this.prisma.zoominfoLead :
+        type === 'APOLLO' ? this.prisma.apolloLead :
+        null;
+        
+    if (!rawDelegate) {
+        // Cleanup file if error occurs before processing starts
+        fs.unlinkSync(filePath); 
+        throw new BadRequestException('Invalid lead type for batch insertion');
+    }
+    const delegate = rawDelegate as unknown as LeadDelegate;
+    
+    // Define expectedHeaders and emailColumns based on 'type'
     const expectedHeaders: string[] = [];
-    let emailColumns: string[] = [];
+    const emailColumns: string[] = [];
 
     switch (type) {
       case 'SALES_NAVIGATOR':
-        expectedHeaders.push(
-          'first_name',
-          'last_name',
-          'job_title',
-          'email_first',
-          'email_second',
-          'phone',
-          'company_phone',
-          'url',
-          'company_name',
-          'company_domain',
-          'company_id',
-          'location',
-          'linkedin_id',
-          'created_date',
-        );
-        emailColumns = ['email_first', 'email_second'];
+        expectedHeaders.push('first_name', 'last_name', 'job_title', 'email_first', 'email_second', 'phone', 'company_phone', 'url', 'company_name', 'company_domain', 'company_id', 'location', 'linkedin_id', 'created_date');
+        emailColumns.push('email_first', 'email_second');
         break;
-
       case 'ZOOMINFO':
-        expectedHeaders.push(
-          'company_id',
-          'name',
-          'email',
-          'email_score',
-          'phone',
-          'work_phone',
-          'lead_location',
-          'lead_divison',
-          'lead_titles',
-          'seniority_level',
-          'decision_making_power',
-          'company_function',
-          'company_funding_range',
-          'latest_funding_stage',
-          'company_name',
-          'company_size',
-          'company_location_text',
-          'company_type',
-          'company_industry',
-          'company_sector',
-          'company_facebook_page',
-          'revenue_range',
-          'ebitda_range',
-          'company_size_key',
-          'linkedin_url',
-          'company_founded_at',
-          'company_website',
-          'skills',
-          'past_companies',
-          'company_phone_numbers',
-          'company_linkedin_page',
-          'company_sic_code',
-          'company_naics_code',
-        );
-        emailColumns = ['email'];
+        expectedHeaders.push('company_id', 'name', 'email', 'email_score', 'phone', 'work_phone', 'lead_location', 'lead_divison', 'lead_titles', 'seniority_level', 'decision_making_power', 'company_function', 'company_funding_range', 'latest_funding_stage', 'company_name', 'company_size', 'company_location_text', 'company_type', 'company_industry', 'company_sector', 'company_facebook_page', 'revenue_range', 'ebitda_range', 'company_size_key', 'linkedin_url', 'company_founded_at', 'company_website', 'skills', 'past_companies', 'company_phone_numbers', 'company_linkedin_page', 'company_sic_code', 'company_naics_code');
+        emailColumns.push('email');
         break;
-
       case 'APOLLO':
-        expectedHeaders.push(
-          'first_name',
-          'last_name',
-          'title',
-          'company_name',
-          'company_name_for_emails',
-          'email',
-          'email_status',
-          'primary_email_source',
-          'primary_email_verification_source',
-          'email_confidence',
-          'primary_email_catch_all_status',
-          'primary_email_last_verified_at',
-          'seniority',
-          'departments',
-          'contact_owner',
-          'work_direct_phone',
-          'home_phone',
-          'mobile_phone',
-          'corporate_phone',
-          'other_phone',
-          'stage',
-          'lists',
-          'last_contacted',
-          'account_owner',
-          'employees',
-          'industry',
-          'keywords',
-          'person_linkedin_url',
-          'website',
-          'company_uinkedin_url',
-          'facebook_url',
-          'twitter_url',
-          'city',
-          'state',
-          'country',
-          'company_address',
-          'company_city',
-          'company_state',
-          'company_country',
-          'company_phone',
-          'technologies',
-          'annual_revenue',
-          'total_funding',
-          'latest_funding',
-          'latest_funding_amount',
-          'last_raised_at',
-          'subsidiary_of',
-          'email_sent',
-          'email_open',
-          'email_bounced',
-          'replied',
-          'demoed',
-          'number_of_retail_locations',
-          'apollo_contact_id',
-          'apollo_account_id',
-          'secondary_email',
-          'secondary_email_source',
-          'secondary_email_status',
-          'secondary_email_verification_source',
-          'tertiary_email',
-          'tertiary_email_source',
-          'tertiary_email_status',
-          'tertiary_email_verification_source',
-        );
-        emailColumns = ['email', 'secondary_email', 'tertiary_email'];
+        expectedHeaders.push('first_name', 'last_name', 'title', 'company_name', 'company_name_for_emails', 'email', 'email_status', 'primary_email_source', 'primary_email_verification_source', 'email_confidence', 'primary_email_catch_all_status', 'primary_email_last_verified_at', 'seniority', 'departments', 'contact_owner', 'work_direct_phone', 'home_phone', 'mobile_phone', 'corporate_phone', 'other_phone', 'stage', 'lists', 'last_contacted', 'account_owner', 'employees', 'industry', 'keywords', 'person_linkedin_url', 'website', 'company_uinkedin_url', 'facebook_url', 'twitter_url', 'city', 'state', 'country', 'company_address', 'company_city', 'company_state', 'company_country', 'company_phone', 'technologies', 'annual_revenue', 'total_funding', 'latest_funding', 'latest_funding_amount', 'last_raised_at', 'subsidiary_of', 'email_sent', 'email_open', 'email_bounced', 'replied', 'demoed', 'number_of_retail_locations', 'apollo_contact_id', 'apollo_account_id', 'secondary_email', 'secondary_email_source', 'secondary_email_status', 'secondary_email_verification_source', 'tertiary_email', 'tertiary_email_source', 'tertiary_email_status', 'tertiary_email_verification_source');
+        emailColumns.push('email', 'secondary_email', 'tertiary_email');
         break;
-
-      default:
-        throw new BadRequestException('Invalid lead type');
+        default:
+          throw new BadRequestException('Invalid lead type');
     }
-
-    // 2. Parse CSV
-    const parsed = Papa.parse(csvData, {
-      header: true,
-      skipEmptyLines: 'greedy',
-    }); // 'greedy' skips whitespace-only lines
-
-    if (parsed.errors.length && parsed.data.length === 0) {
-      // Only fail if NO data could be parsed
-      return {
-        success: false,
-        message: 'CSV Parsing Error',
-        errors: parsed.errors,
-      };
-    }
-
-    // 3. Row Processing
-    const cleanedRows = parsed.data
-      .map((row: any) => {
-        // Initialize object with all expected keys set to NULL
-        const cleanRow: any = {};
-        expectedHeaders.forEach((h) => (cleanRow[h] = null));
-
-        // Fill with data from CSV
-        Object.keys(row).forEach((key) => {
-          // Only process if the key matches our expected headers (security & cleanup)
-          if (expectedHeaders.includes(key)) {
-            let value = String(row[key] || '').trim();
-
-            // Cleanup junk values
-            if (value.toLowerCase() === 'nan' || value === '') {
-              value = null;
-            } else {
-              // Remove extra quotes
-              value = value.replace(/^(\[?['"]\]?)+|(['"]\]?)+$/g, '');
-              // Truncate if too long
-              if (value.length > 1000) value = value.substring(0, 1000);
-            }
-
-            // Relaxed Email Logic: If invalid, set to NULL (don't reject row)
-            if (emailColumns.includes(key) && value) {
-              if (!value.includes('@')) {
-                value = null; // Invalid email becomes null
-              }
-            }
-
-            cleanRow[key] = value;
-          }
-        });
-
-        // Check if the row is completely empty (all values null)
-        const hasData = Object.values(cleanRow).some((v) => v !== null);
-        if (!hasData) return null;
-
-        // Attach User ID
-        cleanRow['userId'] = userId;
-        return cleanRow;
-      })
-      .filter((r) => r !== null); // Remove completely empty rows
-
-    // 4. Insert Valid Rows (Batch Insertion)
-    if (cleanedRows.length) {
-      const BATCH_SIZE = 5000; // Optimal batch size to avoid V8 string length limit
-      let insertedCount = 0;
-
-      // Get the raw delegate union type
-      const rawDelegate =
-        type === 'SALES_NAVIGATOR'
-          ? this.prisma.salesNavigatorLead
-          : type === 'ZOOMINFO'
-            ? this.prisma.zoominfoLead
-            : type === 'APOLLO'
-              ? this.prisma.apolloLead
-              : null;
-
-      if (!rawDelegate) {
-        throw new BadRequestException('Invalid lead type for batch insertion');
-      }
-
-      // Assert the delegate type to ensure createMany is callable
-      const delegate = rawDelegate as unknown as LeadDelegate;
-
-      try {
-        // Iterate through data in chunks (batches)
-        for (let i = 0; i < cleanedRows.length; i += BATCH_SIZE) {
-          const batch = cleanedRows.slice(i, i + BATCH_SIZE);
-
-          // Use createMany for the small batch
-          const result = await delegate.createMany({
-            data: batch,
-            skipDuplicates: true,
-          });
-          insertedCount += result.count;
+    
+    // 2. Row Processing Logic
+    const processRow = async (row: any) => {
+        // ⭐ CRITICAL FIX: Ensure row is a valid object before using Object.keys()
+        if (!row || typeof row !== 'object') {
+            return; 
         }
 
-        return {
-          success: true,
-          imported: insertedCount, // Total count from all successful batches
-          type,
-          message: `${insertedCount} ${type} leads imported successfully.`,
-          errors: null,
-        };
-      } catch (error) {
-        console.error('Database Insert Error:', error);
-        throw new BadRequestException(
-          'Failed to save data to database. Check fields or reduce batch size.',
-        );
-      }
+        const cleanRow: any = {};
+        expectedHeaders.forEach((h) => (cleanRow[h] = null));
+        
+        // Line 181 from error trace is now safe
+        Object.keys(row).forEach((key) => {
+            if (expectedHeaders.includes(key)) {
+                let value = String(row[key] || '').trim();
+
+                // Cleanup junk values and truncate
+                if (value.toLowerCase() === 'nan' || value === '') {
+                    value = null;
+                } else {
+                    value = value.replace(/^(\[?['"]\]?)+|(['"]\]?)+$/g, '');
+                    if (value.length > 1000) value = value.substring(0, 1000);
+                }
+
+                // Email validation
+                if (emailColumns.includes(key) && value) {
+                    if (!value.includes('@')) {
+                        value = null;
+                    }
+                }
+                cleanRow[key] = value;
+            }
+        });
+        
+        const hasData = Object.values(cleanRow).some((v) => v !== null);
+        if (hasData) {
+            cleanRow['userId'] = userId;
+            batchBuffer.push(cleanRow);
+            
+            // Execute batch insert as soon as the buffer is full
+            if (batchBuffer.length >= BATCH_SIZE) {
+                await delegate.createMany({
+                    data: batchBuffer,
+                    skipDuplicates: true,
+                });
+                insertedCount += batchBuffer.length;
+                batchBuffer = []; // Clear the buffer
+            }
+        }
+    };
+
+    // 3. Streaming Execution
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const fileStream = fs.createReadStream(filePath);
+
+            Papa.parse(fileStream, {
+                header: true,
+                skipEmptyLines: 'greedy',
+                // Process each row as it is parsed
+                step: (results) => {
+                    // Safety check inside step before calling processRow
+                    if (results.data && results.data.length > 0) {
+                        processRow(results.data[0]); 
+                    }
+                },
+                complete: async () => {
+                    // Final insert for any remaining items in the buffer
+                    if (batchBuffer.length > 0) {
+                        const result = await delegate.createMany({
+                            data: batchBuffer,
+                            skipDuplicates: true,
+                        });
+                        insertedCount += result.count;
+                    }
+                    resolve();
+                },
+                error: (err) => {
+                    reject(err);
+                }
+            });
+        });
+    } catch (error) {
+        console.error('Streaming Insert Error:', error);
+        throw new BadRequestException('Failed to process stream or save data.');
+    } finally {
+        // 4. Cleanup: Delete the temporary file
+        try {
+            fs.unlinkSync(filePath);
+        } catch (e) {
+            console.warn('Failed to delete temporary file:', e);
+        }
     }
 
+
     return {
-      success: true,
-      imported: 0,
-      type,
-      message: `No valid ${type} leads found to import.`,
-      errors: null,
+        success: true,
+        imported: insertedCount,
+        type,
+        message: `Stream import successful: ${insertedCount} ${type} leads processed.`,
+        errors: null,
     };
   }
+
 
   // ========================================================
   // 🔹 COMMON PAGINATION + FILTER LOGIC (DYNAMIC FIND ALL)

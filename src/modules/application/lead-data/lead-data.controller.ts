@@ -14,6 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { OptionalJwtAuthGuard } from 'src/modules/auth/guards/optional-jwt-auth.guard';
 import { LeadDataService } from './lead-data.service';
+import { multerConfig } from 'src/common/group/multer.config';
 
 @Controller('leads')
 @UseGuards(OptionalJwtAuthGuard)
@@ -27,14 +28,9 @@ export class LeadDataController {
   //   return this.LeadDataService.findAll(query, user);
   // }
 
-  @Post('import')
-  @UseInterceptors(
-      FileInterceptor('file', {
-        limits: {
-          fileSize: 5 * 1024 * 1024 * 1024,
-        },
-      }),
-    )
+ @Post('import')
+  // ⭐ FIX: Use disk storage config here
+  @UseInterceptors(FileInterceptor('file', multerConfig)) 
   async importLeads(
     @UploadedFile() file: Express.Multer.File,
     @Body('type') type: 'SALES_NAVIGATOR' | 'ZOOMINFO' | 'APOLLO',
@@ -44,16 +40,17 @@ export class LeadDataController {
       if (!file) throw new BadRequestException('CSV file is required');
       if (!type) throw new BadRequestException('Lead type is required');
 
-      const buffer = file.buffer.toString('utf-8');
+      // ❌ REMOVED: const buffer = file.buffer.toString('utf-8'); <-- This caused the crash.
+      // Multer stores the file's path on the disk now: file.path
 
-      // userId can come from req.user.id if using auth middleware
       const userId = req.user?.sub;
       console.log('user id', req.user);
       if (!userId) throw new BadRequestException('User not found');
 
-      return await this.LeadDataService.importCsv(buffer, type, userId);
+      // ⭐ FIX: Call the new stream-based service method
+      return await this.LeadDataService.importCsvStream(file.path, type, userId); 
+      
     } catch (error) {
-      // Return proper error
       if (error instanceof BadRequestException) {
         throw error;
       }
