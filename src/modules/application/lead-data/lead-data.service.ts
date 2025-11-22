@@ -1,6 +1,6 @@
+import { parse } from '@fast-csv/parse';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { parse } from '@fast-csv/parse';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Readable } from 'stream';
 
