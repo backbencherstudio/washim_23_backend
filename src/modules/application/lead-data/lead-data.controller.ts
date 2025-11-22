@@ -108,6 +108,7 @@ export class LeadDataController {
    @Get('apollo')
   async findAllApollo(
     @Query('q') q: string,
+    @Query('email_status') email_status: string,
     @Query() query: Record<string, any>,
      @Req() req) {
 
@@ -115,7 +116,7 @@ export class LeadDataController {
       query.q = q;
     }
 
-    return this.LeadDataService.findAllApollo(query, req.user);
+    return this.LeadDataService.findAllApollo(query, req.user, email_status);
   }
 
  //f

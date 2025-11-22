@@ -453,7 +453,6 @@ export class LeadDataService {
     };
   }
 
-
   private async processCsvInBackground(
     buffer: Buffer,
     expectedHeaders: string[],
@@ -602,9 +601,13 @@ export class LeadDataService {
     }
   }
 
-  async deleteAllLeads(): Promise<{ deletedCounts: { [key: string]: number } }> {
-    this.logger.warn('🚨 Starting mass deletion of ALL lead data across all tables...');
-    
+  async deleteAllLeads(): Promise<{
+    deletedCounts: { [key: string]: number };
+  }> {
+    this.logger.warn(
+      '🚨 Starting mass deletion of ALL lead data across all tables...',
+    );
+
     const deletedCounts: { [key: string]: number } = {};
 
     try {
@@ -624,11 +627,10 @@ export class LeadDataService {
       this.logger.log(`Deleted ${apolloResult.count} Apollo leads.`);
 
       this.logger.log('✅ Mass deletion completed successfully.');
-      
+
       return {
         deletedCounts: deletedCounts,
       };
-
     } catch (error) {
       this.logger.error('❌ Failed to delete all leads:', error.message);
       // এখানে একটি কাস্টম এরর বা থ্রো করা উচিত
@@ -1013,14 +1015,15 @@ export class LeadDataService {
   // ====================Apollo=========================================
   // ==================== APOLLO LEADS ====================
 
-  async findAllApollo(query: Record<string, any>, user: any) {
-    return this.ApolloLead('apolloLead', query, user);
+  async findAllApollo(query: Record<string, any>, user: any, email_status: string) {
+    return this.ApolloLead('apolloLead', query, user, email_status);
   }
 
   private async ApolloLead(
     model: 'apolloLead',
     query: Record<string, any>,
     user: any,
+    email_status: string,
   ) {
     // Pagination setup
     const page = Number(query.page) > 0 ? Number(query.page) : 1;
@@ -1102,6 +1105,12 @@ export class LeadDataService {
         where.AND.push({
           OR: values.map((v) => ({
             country: { contains: v, mode: 'insensitive' },
+          })),
+        });
+      } else if (key === 'email_status') {
+        where.AND.push({
+          OR: values.map((v) => ({
+            email_status: { contains: v, mode: 'insensitive' },
           })),
         });
       } else if (key === 'city') {
