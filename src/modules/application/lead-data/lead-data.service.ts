@@ -112,6 +112,7 @@ export class LeadDataService {
     'createdAt',
     'updated_at',
   ]);
+  //
 
   constructor(private prisma: PrismaService) {}
 
