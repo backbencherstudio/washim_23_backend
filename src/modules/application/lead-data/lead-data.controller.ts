@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Body,
   Controller,
-  Delete,
   Get,
   Post,
   Query,
@@ -14,7 +13,6 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { OptionalJwtAuthGuard } from 'src/modules/auth/guards/optional-jwt-auth.guard';
 import { LeadDataService } from './lead-data.service';
-import { multerConfig } from 'src/common/group/multer.config';
 
 @Controller('leads')
 @UseGuards(OptionalJwtAuthGuard)
@@ -28,9 +26,8 @@ export class LeadDataController {
   //   return this.LeadDataService.findAll(query, user);
   // }
 
- @Post('import')
-  // ⭐ FIX: Use disk storage config here
-  @UseInterceptors(FileInterceptor('file', multerConfig)) 
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file'))
   async importLeads(
     @UploadedFile() file: Express.Multer.File,
     @Body('type') type: 'SALES_NAVIGATOR' | 'ZOOMINFO' | 'APOLLO',
@@ -40,17 +37,16 @@ export class LeadDataController {
       if (!file) throw new BadRequestException('CSV file is required');
       if (!type) throw new BadRequestException('Lead type is required');
 
-      // ❌ REMOVED: const buffer = file.buffer.toString('utf-8'); <-- This caused the crash.
-      // Multer stores the file's path on the disk now: file.path
+      const buffer = file.buffer.toString('utf-8');
 
+      // userId can come from req.user.id if using auth middleware
       const userId = req.user?.sub;
       console.log('user id', req.user);
       if (!userId) throw new BadRequestException('User not found');
 
-      // ⭐ FIX: Call the new stream-based service method
-      return await this.LeadDataService.importCsvStream(file.path, type, userId); 
-      
+      return await this.LeadDataService.importCsv(buffer, type, userId);
     } catch (error) {
+      // Return proper error
       if (error instanceof BadRequestException) {
         throw error;
       }
@@ -153,8 +149,6 @@ export class LeadDataController {
     return this.LeadDataService.getState(search);
   }
 
- 
-
   @Get('annual_revenue')
   async getAnnualRevenue(@Query('search') search: string) {
     return this.LeadDataService.getAnnualRevenue(search);
@@ -165,8 +159,6 @@ export class LeadDataController {
     return this.LeadDataService.getDemoed(search);
   }
 
-  // ====================ZoomInfo=========================================
-  // ====================ZoomInfo=========================================
   // ====================ZoomInfo=========================================
 
   @Get('zoominfo')
@@ -282,35 +274,7 @@ export class LeadDataController {
     return this.LeadDataService.getLocation(search);
   }
  
-  // =======================Delete option here====================================
- 
-  // ======================================================
-  // 🗑️ DELETE ENDPOINT (Range-based Deletion)
-  // ======================================================
-  @Delete('delete-by-range') 
-  async deleteLeadsByRange(
-    @Body('type') type: 'SALES_NAVIGATOR' | 'ZOOMINFO' | 'APOLLO',
-    @Body('startDate') startDate: string,
-    @Body('endDate') endDate: string,
-  ) {
-    try {
-      if (!type) {
-        throw new BadRequestException('Lead type is required');
-      }
-      if (!startDate || !endDate) {
-        throw new BadRequestException('Both startDate and endDate are required in ISO 8601 format (e.g., YYYY-MM-DD).');
-      }
-
-      return await this.LeadDataService.deleteLeadsByDateRange(type, startDate, endDate);
-
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      console.error(error);
-      throw new BadRequestException(error.message || 'Range deletion failed');
-    }
-  }
+  // search====================================
 
 
 }

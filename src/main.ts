@@ -5,7 +5,10 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { join } from 'path';
+<<<<<<< HEAD
 import { json, urlencoded } from 'express';
+=======
+>>>>>>> 9b7bf24 (import some working)
 // import express from 'express';
 // internal imports
 import { AppModule } from './app.module';
@@ -24,9 +27,12 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.enableCors();
   app.use(helmet());
+<<<<<<< HEAD
  app.use(json({ limit: '5gb' })); 
   app.use(urlencoded({ extended: true, limit: '5gb' }));
   
+=======
+>>>>>>> 9b7bf24 (import some working)
   // Enable it, if special charactrers not encoding perfectly
   // app.use((req, res, next) => {
   //   // Only force content-type for specific API routes, not Swagger or assets
