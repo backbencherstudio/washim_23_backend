@@ -1,5 +1,5 @@
 import { parse } from '@fast-csv/parse';
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Readable } from 'stream';
@@ -112,10 +112,13 @@ export class LeadDataService {
     'createdAt',
     'updated_at',
   ]);
-  
 
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(LeadDataService.name);
 
+  // Batch size for chunked inserts to avoid memory/db overload
+  private readonly BATCH_SIZE = 500;
+
+  constructor(private readonly prisma: PrismaService) {}
 
   // async importCsv(csvData: string, type: string, userId: string) {
   //   if (!userId) throw new BadRequestException('User not found');
@@ -277,58 +280,139 @@ export class LeadDataService {
   //   };
   // }
 
-async importCsv(csvData: string, type: string, userId: string) {
+  // Change input type to accept Buffer for better memory handling
+  async importCsv(fileBuffer: Buffer, type: string, userId: string) {
     if (!userId) throw new BadRequestException('User not found');
 
     let expectedHeaders: string[] = [];
     let emailColumns: string[] = [];
 
+    // Header logic setup
     switch (type) {
       case 'SALES_NAVIGATOR':
         expectedHeaders = [
-          'first_name', 'last_name', 'job_title', 'email_first', 'email_second',
-          'phone', 'company_phone', 'url', 'company_name', 'company_domain',
-          'company_id', 'location', 'linkedin_id', 'created_date'
+          'first_name',
+          'last_name',
+          'job_title',
+          'email_first',
+          'email_second',
+          'phone',
+          'company_phone',
+          'url',
+          'company_name',
+          'company_domain',
+          'company_id',
+          'location',
+          'linkedin_id',
+          'created_date',
         ];
         emailColumns = ['email_first', 'email_second'];
         break;
 
       case 'ZOOMINFO':
         expectedHeaders = [
-          'company_id','name','email','email_score','phone','work_phone',
-          'lead_location','lead_divison','lead_titles','seniority_level',
-          'decision_making_power','company_function','company_funding_range',
-          'latest_funding_stage','company_name','company_size',
-          'company_location_text','company_type','company_industry',
-          'company_sector','company_facebook_page','revenue_range',
-          'ebitda_range','company_size_key','linkedin_url',
-          'company_founded_at','company_website','skills','past_companies',
-          'company_phone_numbers','company_linkedin_page','company_sic_code',
-          'company_naics_code'
+          'company_id',
+          'name',
+          'email',
+          'email_score',
+          'phone',
+          'work_phone',
+          'lead_location',
+          'lead_divison',
+          'lead_titles',
+          'seniority_level',
+          'decision_making_power',
+          'company_function',
+          'company_funding_range',
+          'latest_funding_stage',
+          'company_name',
+          'company_size',
+          'company_location_text',
+          'company_type',
+          'company_industry',
+          'company_sector',
+          'company_facebook_page',
+          'revenue_range',
+          'ebitda_range',
+          'company_size_key',
+          'linkedin_url',
+          'company_founded_at',
+          'company_website',
+          'skills',
+          'past_companies',
+          'company_phone_numbers',
+          'company_linkedin_page',
+          'company_sic_code',
+          'company_naics_code',
         ];
         emailColumns = ['email'];
         break;
 
       case 'APOLLO':
         expectedHeaders = [
-          'first_name','last_name','title','company_name','company_name_for_emails',
-          'email','email_status','primary_email_source',
-          'primary_email_verification_source','email_confidence',
-          'primary_email_catch_all_status','primary_email_last_verified_at',
-          'seniority','departments','contact_owner','work_direct_phone',
-          'home_phone','mobile_phone','corporate_phone','other_phone','stage',
-          'lists','last_contacted','account_owner','employees','industry',
-          'keywords','person_linkedin_url','website','company_uinkedin_url',
-          'facebook_url','twitter_url','city','state','country','company_address',
-          'company_city','company_state','company_country','company_phone',
-          'technologies','annual_revenue','total_funding','latest_funding',
-          'latest_funding_amount','last_raised_at','subsidiary_of','email_sent',
-          'email_open','email_bounced','replied','demoed',
-          'number_of_retail_locations','apollo_contact_id','apollo_account_id',
-          'secondary_email','secondary_email_source','secondary_email_status',
-          'secondary_email_verification_source','tertiary_email',
-          'tertiary_email_source','tertiary_email_status',
-          'tertiary_email_verification_source'
+          'first_name',
+          'last_name',
+          'title',
+          'company_name',
+          'company_name_for_emails',
+          'email',
+          'email_status',
+          'primary_email_source',
+          'primary_email_verification_source',
+          'email_confidence',
+          'primary_email_catch_all_status',
+          'primary_email_last_verified_at',
+          'seniority',
+          'departments',
+          'contact_owner',
+          'work_direct_phone',
+          'home_phone',
+          'mobile_phone',
+          'corporate_phone',
+          'other_phone',
+          'stage',
+          'lists',
+          'last_contacted',
+          'account_owner',
+          'employees',
+          'industry',
+          'keywords',
+          'person_linkedin_url',
+          'website',
+          'company_uinkedin_url',
+          'facebook_url',
+          'twitter_url',
+          'city',
+          'state',
+          'country',
+          'company_address',
+          'company_city',
+          'company_state',
+          'company_country',
+          'company_phone',
+          'technologies',
+          'annual_revenue',
+          'total_funding',
+          'latest_funding',
+          'latest_funding_amount',
+          'last_raised_at',
+          'subsidiary_of',
+          'email_sent',
+          'email_open',
+          'email_bounced',
+          'replied',
+          'demoed',
+          'number_of_retail_locations',
+          'apollo_contact_id',
+          'apollo_account_id',
+          'secondary_email',
+          'secondary_email_source',
+          'secondary_email_status',
+          'secondary_email_verification_source',
+          'tertiary_email',
+          'tertiary_email_source',
+          'tertiary_email_status',
+          'tertiary_email_verification_source',
         ];
         emailColumns = ['email', 'secondary_email', 'tertiary_email'];
         break;
@@ -337,84 +421,261 @@ async importCsv(csvData: string, type: string, userId: string) {
         throw new BadRequestException('Invalid lead type');
     }
 
-    const BATCH_SIZE = 1000;
+    // 1. Create a Job/Task entry immediately
+    const importJob = await this.prisma.importJob.create({
+      data: {
+        userId: userId,
+        fileType: type,
+        status: 'PENDING',
+      },
+    });
+
+    // 2. Run the actual processing in the background (fire and forget)
+    // .catch ব্যবহার করা হয়েছে যাতে ব্যাকগ্রাউন্ড এরর প্রধান প্রসেসকে প্রভাবিত না করে
+    this.processCsvInBackground(
+      fileBuffer,
+      expectedHeaders,
+      emailColumns,
+      type,
+      userId,
+      importJob.id,
+    ).catch((err) =>
+      this.logger.error(
+        `Failed to start background process for Job ${importJob.id}: ${err.message}`,
+      ),
+    );
+
+    // 3. Return the Job ID immediately to avoid timeout
+    return {
+      success: true,
+      message: `File upload initiated. Processing data in the background. Use the job ID to track status.`,
+      jobId: importJob.id,
+    };
+  }
+
+
+  private async processCsvInBackground(
+    buffer: Buffer,
+    expectedHeaders: string[],
+    emailColumns: string[],
+    type: string,
+    userId: string,
+    jobId: string,
+  ) {
     let batch = [];
     let totalImported = 0;
+    let totalFailed = 0;
+    let totalProcessed = 0;
 
-    const stream = Readable.from(csvData);
+    this.logger.log(`Starting background CSV processing for Job: ${jobId}`);
 
-    return new Promise((resolve, reject) => {
-      stream
-        .pipe(parse({ headers: true, trim: true }))
-        .on('error', (err) => reject(err))
+    await this.updateJobStatus(jobId, 'PROCESSING');
 
-        .on('data', async (row) => {
+    // Stream directly from Buffer
+    const stream = Readable.from(buffer).pipe(
+      parse({
+        headers: true,
+        trim: true,
+        ignoreEmpty: true,
+        strictColumnHandling: false,
+        discardUnmappedColumns: true,
+      }),
+    );
+
+    try {
+      for await (const row of stream) {
+        totalProcessed++; // প্রত্যেকটি রো-এর সংখ্যা
+
+        try {
           const cleanRow: any = {};
-
           expectedHeaders.forEach((h) => (cleanRow[h] = null));
+          let hasData = false;
 
+          // Data Cleaning and Validation logic
           for (const key of Object.keys(row)) {
             if (!expectedHeaders.includes(key)) continue;
 
             let value = String(row[key] || '').trim();
             if (!value || value.toLowerCase() === 'nan') value = null;
 
+            // Simple Email Validation: check for '@'
             if (emailColumns.includes(key) && value && !value.includes('@')) {
-              value = null;
+              value = null; // Invalidate bad email
             }
 
-            cleanRow[key] = value;
+            if (value !== null) {
+              cleanRow[key] = value;
+              hasData = true;
+            }
           }
 
-          if (!Object.values(cleanRow).some((v) => v !== null)) return;
+          if (!hasData) {
+            totalFailed++; // Invalid/empty row
+            continue;
+          }
 
           cleanRow.userId = userId;
-
           batch.push(cleanRow);
 
-          if (batch.length >= BATCH_SIZE) {
-            stream.pause();
-            await this.saveBatch(batch, type);
+          // Batch Save (Chunking logic)
+          if (batch.length >= this.BATCH_SIZE) {
+            const savedCount = await this.saveBatch(batch, type);
+            totalImported += savedCount;
+            // Rows that were not inserted (e.g., duplicates) are added to failed count
+            totalFailed += batch.length - savedCount;
 
-            totalImported += batch.length;
-            console.log(`Imported ${totalImported} rows ✔️`);
+            this.logger.log(
+              `Job ${jobId}: Imported ${totalImported} rows, Failed/Skipped ${totalFailed}`,
+            );
+
+            // Database update after each chunk
+            await this.updateJobProgress(
+              jobId,
+              totalImported,
+              totalFailed,
+              totalProcessed,
+            );
 
             batch = [];
-            stream.resume();
+            // setImmediate() ensures the Node.js event loop gets a chance to breathe
+            await new Promise((resolve) => setImmediate(resolve));
           }
-        })
+        } catch (rowError) {
+          totalFailed++;
+          this.logger.warn(
+            `Skipping row due to error in parsing: ${rowError.message}`,
+          );
+        }
+      }
 
-        .on('end', async () => {
-          if (batch.length > 0) {
-            await this.saveBatch(batch, type);
-            totalImported += batch.length;
+      // Save remaining batch
+      if (batch.length > 0) {
+        const savedCount = await this.saveBatch(batch, type);
+        totalImported += savedCount;
+        totalFailed += batch.length - savedCount;
+      }
 
-            console.log(`Final Batch Inserted. Total: ${totalImported}`);
-          }
-
-          resolve({
-            success: true,
-            imported: totalImported,
-            type,
-            message: `${type} import completed successfully.`,
-          });
-        });
-    });
+      // Final completion update
+      await this.updateJobProgress(
+        jobId,
+        totalImported,
+        totalFailed,
+        totalProcessed,
+      );
+      await this.updateJobStatus(jobId, 'COMPLETED');
+      this.logger.log(
+        `✅ Job ${jobId} Completed! Total Processed: ${totalProcessed}`,
+      );
+    } catch (error) {
+      // Handle fatal stream/import error
+      this.logger.error(`Fatal Import Error for Job ${jobId}:`, error);
+      await this.updateJobStatus(jobId, 'FAILED', error.message);
+    }
   }
 
-  private async saveBatch(data: any[], type: string) {
-    if (!data.length) return;
+  private async saveBatch(data: any[], type: string): Promise<number> {
+    if (!data.length) return 0;
 
-    console.log(`Saving batch (${data.length})...`);
+    try {
+      let result;
+      // skipDuplicates: true থাকার কারণে ডুপ্লিকেটগুলো এরর দেবে না, শুধু ইনসার্ট হবে না।
+      if (type === 'SALES_NAVIGATOR')
+        result = await this.prisma.salesNavigatorLead.createMany({
+          data,
+          skipDuplicates: true,
+        });
+      else if (type === 'ZOOMINFO')
+        result = await this.prisma.zoominfoLead.createMany({
+          data,
+          skipDuplicates: true,
+        });
+      else if (type === 'APOLLO')
+        result = await this.prisma.apolloLead.createMany({
+          data,
+          skipDuplicates: true,
+        });
 
-    if (type === 'SALES_NAVIGATOR')
-      return this.prisma.salesNavigatorLead.createMany({ data, skipDuplicates: true });
+      return result ? result.count : 0;
+    } catch (err) {
+      this.logger.error(`Batch save failed: ${err.message}`);
+      return 0; // If batch fails entirely
+    }
+  }
 
-    if (type === 'ZOOMINFO')
-      return this.prisma.zoominfoLead.createMany({ data, skipDuplicates: true });
+  async deleteAllLeads(): Promise<{ deletedCounts: { [key: string]: number } }> {
+    this.logger.warn('🚨 Starting mass deletion of ALL lead data across all tables...');
+    
+    const deletedCounts: { [key: string]: number } = {};
 
-    if (type === 'APOLLO')
-      return this.prisma.apolloLead.createMany({ data, skipDuplicates: true });
+    try {
+      // 1. SALES_NAVIGATOR Leads ডিলিট করুন
+      const salesResult = await this.prisma.salesNavigatorLead.deleteMany({});
+      deletedCounts['SALES_NAVIGATOR'] = salesResult.count;
+      this.logger.log(`Deleted ${salesResult.count} Sales Navigator leads.`);
+
+      // 2. ZOOMINFO Leads ডিলিট করুন
+      const zoominfoResult = await this.prisma.zoominfoLead.deleteMany({});
+      deletedCounts['ZOOMINFO'] = zoominfoResult.count;
+      this.logger.log(`Deleted ${zoominfoResult.count} Zoominfo leads.`);
+
+      // 3. APOLLO Leads ডিলিট করুন
+      const apolloResult = await this.prisma.apolloLead.deleteMany({});
+      deletedCounts['APOLLO'] = apolloResult.count;
+      this.logger.log(`Deleted ${apolloResult.count} Apollo leads.`);
+
+      this.logger.log('✅ Mass deletion completed successfully.');
+      
+      return {
+        deletedCounts: deletedCounts,
+      };
+
+    } catch (error) {
+      this.logger.error('❌ Failed to delete all leads:', error.message);
+      // এখানে একটি কাস্টম এরর বা থ্রো করা উচিত
+      throw new Error(`Failed to perform mass deletion: ${error.message}`);
+    }
+  }
+
+  // --- Job Tracking Helper Functions ---
+
+  private async updateJobStatus(
+    jobId: string,
+    status: string,
+    errorMessage?: string,
+  ) {
+    try {
+      await this.prisma.importJob.update({
+        where: { id: jobId },
+        data: { status: status, errorMessage: errorMessage || null },
+      });
+    } catch (e) {
+      this.logger.error(
+        `Could not update job status for ${jobId}: ${e.message}`,
+      );
+    }
+  }
+
+  private async updateJobProgress(
+    jobId: string,
+    imported: number,
+    failed: number,
+    totalRows: number,
+  ) {
+    try {
+      // এখানে incremental update দরকার নেই, কারণ আমরা পুরো import count ট্র্যাক করছি
+      await this.prisma.importJob.update({
+        where: { id: jobId },
+        data: {
+          importedCount: imported,
+          failedCount: failed,
+          totalRows: totalRows,
+        },
+      });
+    } catch (e) {
+      this.logger.error(
+        `Could not update job progress for ${jobId}: ${e.message}`,
+      );
+    }
   }
 
   // ========================================================

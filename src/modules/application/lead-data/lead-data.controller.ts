@@ -2,7 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Post,
   Query,
   Req,
@@ -25,35 +28,50 @@ export class LeadDataController {
   //   const user = req.user || null; // user may be null if not logged in
   //   return this.LeadDataService.findAll(query, user);
   // }
-
-  @Post('import')
-  @UseInterceptors(FileInterceptor('file'))
+@Post('import')
+  @UseInterceptors(FileInterceptor('file')) // Max file size limit global config e thaka lagbe
   async importLeads(
     @UploadedFile() file: Express.Multer.File,
-    @Body('type') type: 'SALES_NAVIGATOR' | 'ZOOMINFO' | 'APOLLO',
+    @Body('type') type: string,
     @Req() req,
   ) {
     try {
       if (!file) throw new BadRequestException('CSV file is required');
       if (!type) throw new BadRequestException('Lead type is required');
 
-      const buffer = file.buffer.toString('utf-8');
-
-      // userId can come from req.user.id if using auth middleware
+      // userId extraction
       const userId = req.user?.sub;
-      console.log('user id', req.user);
-      if (!userId) throw new BadRequestException('User not found');
+      console.log('User ID requesting import:', userId);
+      
+      if (!userId) throw new BadRequestException('User not authenticated');
 
-      return await this.LeadDataService.importCsv(buffer, type, userId);
+      /**
+       * ❌ WRONG (Do not use this for large files):
+       * const buffer = file.buffer.toString('utf-8'); 
+       * * ✅ CORRECT:
+       * Pass the raw buffer directly. Let the Service handle the stream.
+       */
+      
+      return await this.LeadDataService.importCsv(file.buffer, type, userId);
+
     } catch (error) {
-      // Return proper error
+      console.error('Controller Error:', error);
       if (error instanceof BadRequestException) {
         throw error;
       }
-      console.error(error);
       throw new BadRequestException(error.message || 'Import failed');
     }
   }
+
+
+  @Delete('all')
+    @HttpCode(HttpStatus.OK)
+    // @UseGuards(AdminGuard) // অবশ্যই একটি অ্যাডমিন গার্ড ব্যবহার করুন!
+    async deleteAllData() {
+        // এখানে কোনো userId বা parameter দরকার নেই, কারণ এটি সব ডিলিট করবে।
+        return await this.LeadDataService.deleteAllLeads();
+    }
+
 
   @Get('export')
   // async exportCsv(@Query() query: Record<string, any>, @Res() res: Response) {

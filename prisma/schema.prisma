@@ -422,6 +422,19 @@ model UserSetting {
   @@map("user_settings")
 }
 
+model ImportJob {
+  id              String    @id @default(uuid())
+  userId          String    // যিনি ইমপোর্ট করছেন
+  fileType        String    // SALES_NAVIGATOR, ZOOMINFO, APOLLO
+  status          String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  totalRows       Int       @default(0)         // মোট প্রসেস হওয়া রো
+  importedCount   Int       @default(0)         // সফলভাবে ডাটাবেসে ইনসার্ট হওয়া
+  failedCount     Int       @default(0)         // ভ্যালিডেশন ফেইল বা ডুপ্লিকেট/এরর
+  errorMessage    String?   // যদি ফাটাল এরর হয়
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
 model SalesNavigatorLead {
   id             String    @id @default(cuid())
   first_name     String?
