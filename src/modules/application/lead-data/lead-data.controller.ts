@@ -248,6 +248,7 @@ export class LeadDataController {
   async getCompanyDomain(@Query('search') search: string) {
     return this.LeadDataService.getCompanyDomain(search);
   }
+  //
 
   @Get('linkedin_id')
   async getLinkedinId(@Query('search') search: string) {
