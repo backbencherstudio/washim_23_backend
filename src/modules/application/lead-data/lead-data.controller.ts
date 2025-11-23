@@ -22,12 +22,18 @@ import { LeadDataService } from './lead-data.service';
 export class LeadDataController {
   constructor(private readonly LeadDataService: LeadDataService) {}
 
-  // @Get()
-  // @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
-  // async getLeads(@Query() query: Record<string, any>, @Req() req: any) {
-  //   const user = req.user || null; // user may be null if not logged in
-  //   return this.LeadDataService.findAll(query, user);
-  // }
+  private parseDate(dateStr: string, paramName = 'date'): Date {
+    if (!dateStr) {
+      throw new BadRequestException(`${paramName} query parameter is required`);
+    }
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      throw new BadRequestException(`${paramName} is not a valid date`);
+    }
+    return date;
+  }
+
+  // ============================== import controller ==============================
 @Post('import')
   @UseInterceptors(FileInterceptor('file')) // Max file size limit global config e thaka lagbe
   async importLeads(
@@ -44,13 +50,6 @@ export class LeadDataController {
       console.log('User ID requesting import:', userId);
       
       if (!userId) throw new BadRequestException('User not authenticated');
-
-      /**
-       * ❌ WRONG (Do not use this for large files):
-       * const buffer = file.buffer.toString('utf-8'); 
-       * * ✅ CORRECT:
-       * Pass the raw buffer directly. Let the Service handle the stream.
-       */
       
       return await this.LeadDataService.importCsv(file.buffer, type, userId);
 
@@ -64,14 +63,64 @@ export class LeadDataController {
   }
 
 
-  @Delete('all')
+@Delete('sales-navigator/delete')
+async deleteSalesNavigatorByDate(
+  @Query('startDate') startDateStr: string,
+  @Query('endDate') endDateStr: string,
+  @Query('limit') limitStr?: string,
+) {
+  const startDate = this.parseDate(startDateStr, 'startDate');
+  const endDate = this.parseDate(endDateStr, 'endDate');
+  const limit = limitStr ? Number(limitStr) : undefined;
+
+  return this.LeadDataService.deleteSalesNavigatorLeadsByDateRange(
+    startDate,
+    endDate,
+    limit,
+  );
+}
+
+@Delete('apollo/delete')
+async deleteApolloByDate(
+  @Query('startDate') startDateStr: string,
+  @Query('endDate') endDateStr: string,
+  @Query('limit') limitStr?: string,
+) {
+  const startDate = this.parseDate(startDateStr, 'startDate');
+  const endDate = this.parseDate(endDateStr, 'endDate');
+  const limit = limitStr ? Number(limitStr) : undefined;
+
+  return this.LeadDataService.deleteApolloLeadsByDateRange(
+    startDate,
+    endDate,
+    limit,
+  );
+}
+
+@Delete('zoominfo/delete')
+async deleteZoominfoByDate(
+  @Query('startDate') startDateStr: string,
+  @Query('endDate') endDateStr: string,
+  @Query('limit') limitStr?: string,
+) {
+  const startDate = this.parseDate(startDateStr, 'startDate');
+  const endDate = this.parseDate(endDateStr, 'endDate');
+  const limit = limitStr ? Number(limitStr) : undefined;
+
+  return this.LeadDataService.deleteZoominfoLeadsByDateRange(
+    startDate,
+    endDate,
+    limit,
+  );
+}
+
+
+
+  @Delete('all-DELETE')
     @HttpCode(HttpStatus.OK)
-    // @UseGuards(AdminGuard) // অবশ্যই একটি অ্যাডমিন গার্ড ব্যবহার করুন!
     async deleteAllData() {
-        // এখানে কোনো userId বা parameter দরকার নেই, কারণ এটি সব ডিলিট করবে।
         return await this.LeadDataService.deleteAllLeads();
     }
-
 
   @Get('export')
   // async exportCsv(@Query() query: Record<string, any>, @Res() res: Response) {
