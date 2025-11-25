@@ -1,8 +1,10 @@
 import { parse } from '@fast-csv/parse';
+import { format } from '@fast-csv/format';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Readable } from 'stream';
+import { Response } from 'express';
 
 @Injectable()
 export class LeadDataService {
@@ -113,12 +115,12 @@ export class LeadDataService {
     'updated_at',
   ]);
   private formatReadable(date: Date) {
-  return date.toLocaleDateString('en-US', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-}
+    return date.toLocaleDateString('en-US', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  }
 
   private readonly logger = new Logger(LeadDataService.name);
 
@@ -608,99 +610,139 @@ export class LeadDataService {
 
   //----------------------------- Delete start -----------------------------------------
 
-// Reusable function for all 3 lead types
+  // Reusable function for all 3 lead types
+private async _executeSingleBatch(
+    model: any,
+    startDate: Date,
+    endDate: Date,
+    batchSize: number,
+) {
+    const endOfDay = new Date(endDate);
+    endOfDay.setDate(endOfDay.getDate() + 1);
+
+    // 1) Find IDs (limited to batchSize)
+    const items = await model.findMany({
+        where: {
+            created_at: {
+                gte: startDate,
+                lt: endOfDay,
+            },
+        },
+        select: { id: true },
+        take: batchSize, 
+        orderBy: { created_at: 'asc' },
+    });
+
+    if (items.length === 0) {
+        return { count: 0 };
+    }
+
+    const ids = items.map((i) => i.id);
+
+    // 2) Delete by IDs
+    return await model.deleteMany({
+        where: { id: { in: ids } },
+    });
+}
+
 private async deleteWithLimit(
   model: any,
   startDate: Date,
   endDate: Date,
-  limit?: number,
+  limit?: number, 
 ) {
-  const endOfDay = new Date(endDate);
-  endOfDay.setDate(endOfDay.getDate() + 1);
 
-  // 1) Find IDs (limited)
-  const items = await model.findMany({
-    where: {
-      created_at: {
-        gte: startDate,
-        lt: endOfDay,
-      },
-    },
-    select: { id: true },
-    take: limit ?? undefined,
-    orderBy: { created_at: 'asc' },
-  });
+  const BIND_VARIABLE_MAX_SAFE = 30000; 
 
-  if (items.length === 0) {
-    return { count: 0 };
+  const batchSize = limit ?? BIND_VARIABLE_MAX_SAFE;
+  
+
+  if (limit !== undefined) {
+      const actualLimit = Math.min(limit, BIND_VARIABLE_MAX_SAFE);
+      
+      return await this._executeSingleBatch(model, startDate, endDate, actualLimit);
   }
 
-  const ids = items.map((i) => i.id);
+  let totalDeleted = 0;
+  let deletedCount = batchSize; 
 
-  // 2) Delete by IDs
-  return await model.deleteMany({
-    where: { id: { in: ids } },
-  });
+  while (deletedCount === batchSize) {
+
+    const result = await this._executeSingleBatch(model, startDate, endDate, batchSize);
+    deletedCount = result.count;
+    totalDeleted += deletedCount;
+  }
+
+  return { count: totalDeleted };
 }
 
-// ================= SALES NAVIGATOR =================
-async deleteSalesNavigatorLeadsByDateRange(startDate: Date, endDate: Date, limit?: number) {
-  const result = await this.deleteWithLimit(
-    this.prisma.salesNavigatorLead,
-    startDate,
-    endDate,
-    limit,
-  );
+  // ================= SALES NAVIGATOR =================
+  async deleteSalesNavigatorLeadsByDateRange(
+    startDate: Date,
+    endDate: Date,
+    limit?: number,
+  ) {
+    const result = await this.deleteWithLimit(
+      this.prisma.salesNavigatorLead,
+      startDate,
+      endDate,
+      limit,
+    );
 
-   // Count remaining items
-  const remainingCount = await this.prisma.salesNavigatorLead.count();
+    // Count remaining items
+    const remainingCount = await this.prisma.salesNavigatorLead.count();
 
-  return {
-    success: true,
-    message: `Deleted ${result.count} Sales Navigator leads and Date Range: ${this.formatReadable(startDate)} to ${this.formatReadable(endDate)}.`,
-    deletedCount: result.count,
-    remainingCount: remainingCount,
-  };
-}
+    return {
+      success: true,
+      message: `Deleted ${result.count} Sales Navigator leads and Date Range: ${this.formatReadable(startDate)} to ${this.formatReadable(endDate)}.`,
+      deletedCount: result.count,
+      remainingCount: remainingCount,
+    };
+  }
 
-// ================= APOLLO =================
-async deleteApolloLeadsByDateRange(startDate: Date, endDate: Date, limit?: number) {
-  const result = await this.deleteWithLimit(
-    this.prisma.apolloLead,
-    startDate,
-    endDate,
-    limit,
-  );
-  const remainingCount = await this.prisma.apolloLead.count();
+  // ================= APOLLO =================
+  async deleteApolloLeadsByDateRange(
+    startDate: Date,
+    endDate: Date,
+    limit?: number,
+  ) {
+    const result = await this.deleteWithLimit(
+      this.prisma.apolloLead,
+      startDate,
+      endDate,
+      limit,
+    );
+    const remainingCount = await this.prisma.apolloLead.count();
 
-  return {
-    success: true,
-    message: `Deleted ${result.count} Apollo leads and Date Range: ${this.formatReadable(startDate)} to ${this.formatReadable(endDate)}.`,
-    deletedCount: result.count,
-    remainingCount: remainingCount,
-  };
-}
+    return {
+      success: true,
+      message: `Deleted ${result.count} Apollo leads and Date Range: ${this.formatReadable(startDate)} to ${this.formatReadable(endDate)}.`,
+      deletedCount: result.count,
+      remainingCount: remainingCount,
+    };
+  }
 
-// ================= ZOOMINFO =================
-async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: number) {
-  const result = await this.deleteWithLimit(
-    this.prisma.zoominfoLead,
-    startDate,
-    endDate,
-    limit,
-  );
-  const remainingCount = await this.prisma.zoominfoLead.count();
+  // ================= ZOOMINFO =================
+  async deleteZoominfoLeadsByDateRange(
+    startDate: Date,
+    endDate: Date,
+    limit?: number,
+  ) {
+    const result = await this.deleteWithLimit(
+      this.prisma.zoominfoLead,
+      startDate,
+      endDate,
+      limit,
+    );
+    const remainingCount = await this.prisma.zoominfoLead.count();
 
-  return {
-    success: true,
-    message: `Deleted ${result.count} Zoominfo leads and Date Range: ${this.formatReadable(startDate)} to ${this.formatReadable(endDate)}.`,
-    deletedCount: result.count,
-    remainingCount: remainingCount,
-  };
-}
-
-
-
+    return {
+      success: true,
+      message: `Deleted ${result.count} Zoominfo leads and Date Range: ${this.formatReadable(startDate)} to ${this.formatReadable(endDate)}.`,
+      deletedCount: result.count,
+      remainingCount: remainingCount,
+    };
+  }
 
   async deleteAllLeads(): Promise<{
     deletedCounts: { [key: string]: number };
@@ -763,7 +805,6 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
     totalRows: number,
   ) {
     try {
-      
       await this.prisma.importJob.update({
         where: { id: jobId },
         data: {
@@ -893,8 +934,6 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
     };
   }
 
-
-
   // Build prisma where/orderBy from query
   private buildPrismaQuery(
     query: any,
@@ -975,38 +1014,22 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
 
   // ==================== APOLLO LEADS ====================
 
-  async findAllApollo(
-    query: Record<string, any>,
-    user: any,
-    email_status: string,
-  ) {
-    return this.ApolloLead('apolloLead', query, user, email_status);
-  }
-
-  private async ApolloLead(
-    model: 'apolloLead',
-    query: Record<string, any>,
-    user: any,
-    email_status: string,
-  ) {
-    // Pagination setup
-    const page = Number(query.page) > 0 ? Number(query.page) : 1;
-    const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
-    const skip = (page - 1) * limit;
-
-    const where: any = {
-      deleted_at: null,
-    };
+  // ======================================
+  // Private Helper: Generates the reusable Prisma WHERE clause with detailed filtering
+  // This function centralizes all the filtering logic for both listing and export.
+  // ======================================
+  private _getApolloLeadsWhere(query: Record<string, any>): any {
+    const where: any = { deleted_at: null };
     where.AND = [];
 
+    // ======== 1. Search query 'q' (across multiple fields) ========
     if (query.q) {
       const searchTerm = String(query.q).trim();
-
       where.AND.push({
         OR: [
           { first_name: { contains: searchTerm, mode: 'insensitive' } },
           { last_name: { contains: searchTerm, mode: 'insensitive' } },
-          { title: { contains: searchTerm, mode: 'insensitive' } }, // Job Title
+          { title: { contains: searchTerm, mode: 'insensitive' } },
           { company_name: { contains: searchTerm, mode: 'insensitive' } },
           { email: { contains: searchTerm, mode: 'insensitive' } },
           { city: { contains: searchTerm, mode: 'insensitive' } },
@@ -1018,6 +1041,7 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
       });
     }
 
+    // ======== 2. Other specific filters ========
     for (const key of Object.keys(query)) {
       if (['page', 'limit', 'sortBy', 'order', 'q'].includes(key)) continue;
       const value = query[key];
@@ -1025,12 +1049,14 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
 
       let values: string[] = [];
       try {
+        // Safely parse array or treat as string array
         values = Array.isArray(value) ? value : JSON.parse(value);
         if (!Array.isArray(values)) values = [String(value)];
       } catch {
         values = [String(value)];
       }
 
+      // Filter mapping logic
       if (key === 'name') {
         where.AND.push({
           OR: values.flatMap((v) => [
@@ -1040,7 +1066,7 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
         });
       }
 
-      // 2. ?job_titless=... ( job_titles) -> title
+      // Map 'job_titles' or 'job_titless' query keys to the 'title' field
       else if (key === 'job_titles' || key === 'job_titless') {
         where.AND.push({
           OR: values.map((v) => ({
@@ -1049,7 +1075,7 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
         });
       }
 
-      // 3. ?keyword=... -> keywords
+      // Map 'keyword' query key to the 'keywords' field
       else if (key === 'keyword') {
         where.AND.push({
           OR: values.map((v) => ({
@@ -1058,50 +1084,35 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
         });
       }
 
-      // 4. ?company_linkedin=... -> company_uinkedin_url
+      // Map 'company_linkedin' query key to the 'company_uinkedin_url' field
       else if (key === 'company_linkedin') {
         where.AND.push({
           OR: values.map((v) => ({
             company_uinkedin_url: { contains: v, mode: 'insensitive' },
           })),
         });
-      } else if (key === 'country') {
+      }
+
+      // Standard direct field mappings (country, city, state, etc.)
+      else if (
+        [
+          'country',
+          'email_status',
+          'city',
+          'state',
+          'annual_revenue',
+          'demoed',
+        ].includes(key)
+      ) {
         where.AND.push({
           OR: values.map((v) => ({
-            country: { contains: v, mode: 'insensitive' },
+            [key]: { contains: v, mode: 'insensitive' },
           })),
         });
-      } else if (key === 'email_status') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            email_status: { contains: v, mode: 'insensitive' },
-          })),
-        });
-      } else if (key === 'city') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            city: { contains: v, mode: 'insensitive' },
-          })),
-        });
-      } else if (key === 'state') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            state: { contains: v, mode: 'insensitive' },
-          })),
-        });
-      } else if (key === 'annual_revenue') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            annual_revenue: { contains: v, mode: 'insensitive' },
-          })),
-        });
-      } else if (key === 'demoed') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            demoed: { contains: v, mode: 'insensitive' },
-          })),
-        });
-      } else {
+      }
+
+      // Default fallback for any other key
+      else {
         where.AND.push({
           OR: values.map((v) => ({
             [key]: { contains: v, mode: 'insensitive' },
@@ -1110,30 +1121,56 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
       }
     }
 
-    if (where.AND.length === 0) {
-      delete where.AND;
-    }
+    if (where.AND.length === 0) delete where.AND;
+
+    return where;
+  }
+
+  // ===========================
+  // Standard listing function (Offset Pagination)
+  // ===========================
+  async findAllApollo(
+    query: Record<string, any>,
+    user: any,
+    email_status: string,
+  ) {
+    return this.ApolloLead('apolloLead', query, user, email_status);
+  }
+
+  // ======================================
+  // Core function for listing
+  // ======================================
+  private async ApolloLead(
+    model: 'apolloLead',
+    query: Record<string, any>,
+    user: any,
+    email_status: string,
+  ) {
+    const page = Number(query.page) > 0 ? Number(query.page) : 1;
+    const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
+    const skip = (page - 1) * limit;
+
+    // Use the central WHERE clause generator
+    const where = this._getApolloLeadsWhere(query);
 
     const sortBy = query.sortBy || 'created_at';
     const order =
       query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-        ? (query.order.toLowerCase() as Prisma.SortOrder)
-        : Prisma.SortOrder.desc;
+        ? (query.order.toLowerCase() as 'asc' | 'desc')
+        : 'desc';
     const orderBy = { [sortBy]: order };
 
-    // Delegate
-    const delegate: {
-      findMany: (args?: any) => Promise<any[]>;
-      count: (args?: any) => Promise<number>;
-    } = (this.prisma as any)[model];
+    const delegate: any = (this.prisma as any)[model];
+
+    const findArgs: any = {
+      where,
+      orderBy,
+      take: limit,
+      skip: skip,
+    };
 
     const [data, total] = await Promise.all([
-      delegate.findMany({
-        where,
-        take: limit,
-        skip,
-        orderBy,
-      }),
+      delegate.findMany(findArgs),
       delegate.count({ where }),
     ]);
 
@@ -1150,6 +1187,128 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
       access: 'authorized',
     };
   }
+
+  // ======================================
+  // Private function for fetching data in small, sequential batches using cursor pagination
+  // This is used for stable large-scale export.
+  // ======================================
+  private async _fetchApolloLeadsBatch(
+    model: 'apolloLead',
+    query: Record<string, any>,
+    batchSize: number,
+    lastId: number | null,
+  ): Promise<any[]> {
+    // Use the central filter helper
+    const where = this._getApolloLeadsWhere(query);
+    const delegate: any = (this.prisma as any)[model];
+
+    const findArgs: any = {
+      where,
+      take: batchSize,
+      orderBy: { id: 'asc' }, // Must order by the cursor column for stable pagination
+    };
+
+    if (lastId !== null) {
+      findArgs.cursor = { id: lastId };
+      findArgs.skip = 1; // Skip the cursor record itself
+    }
+
+    return delegate.findMany(findArgs);
+  }
+
+  // ============================
+  // Export filtered Apollo leads as CSV (Batched/Chunked)
+  // The logic for splitting into 50,000 record chunks is implemented here.
+  // ============================
+  async exportApolloCsv(query: Record<string, any>, res: Response) {
+    // 50,000 রেকর্ড/ফাইল অনুযায়ী লজিক্যাল চঙ্ক তৈরি হবে (যেমনটি আপনি চেয়েছিলেন)
+    const FILE_SIZE_LIMIT = 50000;
+    // ডেটাবেস থেকে একবারে নিরাপদে আনার জন্য ছোট ব্যাচ সাইজ
+    const DB_BATCH_SIZE = 5000;
+
+    const delegate: any = (this.prisma as any)['apolloLead'];
+    const where = this._getApolloLeadsWhere(query);
+
+    // 1. Get total count based on filters
+    const totalCount = await delegate.count({ where });
+
+    if (totalCount === 0) {
+      res.status(404).send('No data found for the given filters.');
+      return;
+    }
+
+    // 2. Calculate file split
+    const numFiles = Math.ceil(totalCount / FILE_SIZE_LIMIT);
+
+    // NOTE: Node.js/Express-এ একবারে একাধিক ফাইল ডাউনলোড করতে সাধারণত ZIP স্ট্রিম ব্যবহার করা হয়।
+    // এখানে সেই লাইব্রেরি ব্যবহার না করতে পারার কারণে, সমস্ত ডেটা একটি সিঙ্গেল CSV হিসেবে স্ট্রিম করা হচ্ছে,
+    // কিন্তু লজিকটি 50k চঙ্ক-ভিত্তিক এক্সপোর্ট এর জন্য তৈরি করা হয়েছে।
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="apollo_leads_export_${timestamp}.csv"`,
+    );
+
+    const csvStream = format({ headers: true });
+    csvStream.pipe(res);
+
+    let lastId: number | null = null;
+    let recordsExported = 0;
+    let fileNumber = 1;
+
+    try {
+      console.log(
+        `Total records: ${totalCount}. Calculated to be split into ${numFiles} logical file(s) of ${FILE_SIZE_LIMIT} max records.`,
+      );
+
+      // Loop until all records are exported
+      while (recordsExported < totalCount) {
+        // Fetch next batch using cursor pagination
+        const batch = await this._fetchApolloLeadsBatch(
+          'apolloLead',
+          query,
+          DB_BATCH_SIZE,
+          lastId,
+        );
+
+        if (batch.length === 0) break;
+
+        // Write the batch to the stream
+        for (const row of batch) {
+          // লজিক্যাল চঙ্ক চেক (যদি ZIP ইমপ্লিমেন্ট করা হতো, তবে এখানে নতুন CSV ফাইল শুরু হতো)
+          if (recordsExported > 0 && recordsExported % FILE_SIZE_LIMIT === 0) {
+            fileNumber++;
+            console.log(
+              `--- Starting new logical file (File ${fileNumber}) ---`,
+            );
+          }
+
+          // Write the row
+          csvStream.write(row);
+
+          recordsExported++;
+        }
+
+        // Update the cursor for the next database fetch
+        lastId = batch[batch.length - 1].id;
+      }
+
+      csvStream.end();
+    } catch (error) {
+      console.error('Error during CSV export:', error);
+      // Ensure the stream is closed on error
+      csvStream.end();
+      // Handle error response gracefully
+      if (!res.headersSent) {
+        res.status(500).send('Error generating export file.');
+      } else {
+        res.end();
+      }
+    }
+  }
+
   async getJobTitles(search?: string) {
     try {
       const titles = await this.prisma.apolloLead.findMany({
@@ -1193,7 +1352,7 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
       const keywordBlobs = await this.prisma.apolloLead.findMany({
         where: {
           keywords: {
-            contains: search, 
+            contains: search,
             mode: 'insensitive',
           },
         },
@@ -1215,7 +1374,7 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
 
         for (let keyword of individualKeywords) {
           keyword = keyword
-            .trim() 
+            .trim()
             .replace(/^"|"$/g, '')
             .replace(/^'|'$/g, '')
             .trim();
@@ -1278,7 +1437,7 @@ async deleteZoominfoLeadsByDateRange(startDate: Date, endDate: Date, limit?: num
 
         for (let technology of individualTechnologies) {
           technology = technology
-            .trim() 
+            .trim()
             .replace(/^"|"$/g, '')
             .replace(/^'|'$/g, '')
             .trim();

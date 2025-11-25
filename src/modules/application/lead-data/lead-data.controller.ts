@@ -9,13 +9,16 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { OptionalJwtAuthGuard } from 'src/modules/auth/guards/optional-jwt-auth.guard';
 import { LeadDataService } from './lead-data.service';
+import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
 
 @Controller('leads')
 @UseGuards(OptionalJwtAuthGuard)
@@ -34,8 +37,9 @@ export class LeadDataController {
   }
 
   // ============================== import controller ==============================
-@Post('import')
-  @UseInterceptors(FileInterceptor('file')) // Max file size limit global config e thaka lagbe
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file')) 
+  // @UseGuards(JwtAuthGuard)
   async importLeads(
     @UploadedFile() file: Express.Multer.File,
     @Body('type') type: string,
@@ -48,11 +52,10 @@ export class LeadDataController {
       // userId extraction
       const userId = req.user?.sub;
       console.log('User ID requesting import:', userId);
-      
-      if (!userId) throw new BadRequestException('User not authenticated');
-      
-      return await this.LeadDataService.importCsv(file.buffer, type, userId);
 
+      if (!userId) throw new BadRequestException('User not authenticated');
+
+      return await this.LeadDataService.importCsv(file.buffer, type, userId);
     } catch (error) {
       console.error('Controller Error:', error);
       if (error instanceof BadRequestException) {
@@ -62,105 +65,77 @@ export class LeadDataController {
     }
   }
 
+  @Delete('sales-navigator/delete')
+  async deleteSalesNavigatorByDate(
+    @Query('startDate') startDateStr: string,
+    @Query('endDate') endDateStr: string,
+    @Query('limit') limitStr?: string,
+  ) {
+    const startDate = this.parseDate(startDateStr, 'startDate');
+    const endDate = this.parseDate(endDateStr, 'endDate');
+    const limit = limitStr ? Number(limitStr) : undefined;
 
-@Delete('sales-navigator/delete')
-async deleteSalesNavigatorByDate(
-  @Query('startDate') startDateStr: string,
-  @Query('endDate') endDateStr: string,
-  @Query('limit') limitStr?: string,
-) {
-  const startDate = this.parseDate(startDateStr, 'startDate');
-  const endDate = this.parseDate(endDateStr, 'endDate');
-  const limit = limitStr ? Number(limitStr) : undefined;
+    return this.LeadDataService.deleteSalesNavigatorLeadsByDateRange(
+      startDate,
+      endDate,
+      limit,
+    );
+  }
 
-  return this.LeadDataService.deleteSalesNavigatorLeadsByDateRange(
-    startDate,
-    endDate,
-    limit,
-  );
-}
+  @Delete('apollo/delete')
+  async deleteApolloByDate(
+    @Query('startDate') startDateStr: string,
+    @Query('endDate') endDateStr: string,
+    @Query('limit') limitStr?: string,
+  ) {
+    const startDate = this.parseDate(startDateStr, 'startDate');
+    const endDate = this.parseDate(endDateStr, 'endDate');
+    const limit = limitStr ? Number(limitStr) : undefined;
 
-@Delete('apollo/delete')
-async deleteApolloByDate(
-  @Query('startDate') startDateStr: string,
-  @Query('endDate') endDateStr: string,
-  @Query('limit') limitStr?: string,
-) {
-  const startDate = this.parseDate(startDateStr, 'startDate');
-  const endDate = this.parseDate(endDateStr, 'endDate');
-  const limit = limitStr ? Number(limitStr) : undefined;
+    return this.LeadDataService.deleteApolloLeadsByDateRange(
+      startDate,
+      endDate,
+      limit,
+    );
+  }
 
-  return this.LeadDataService.deleteApolloLeadsByDateRange(
-    startDate,
-    endDate,
-    limit,
-  );
-}
+  @Delete('zoominfo/delete')
+  async deleteZoominfoByDate(
+    @Query('startDate') startDateStr: string,
+    @Query('endDate') endDateStr: string,
+    @Query('limit') limitStr?: string,
+  ) {
+    const startDate = this.parseDate(startDateStr, 'startDate');
+    const endDate = this.parseDate(endDateStr, 'endDate');
+    const limit = limitStr ? Number(limitStr) : undefined;
 
-@Delete('zoominfo/delete')
-async deleteZoominfoByDate(
-  @Query('startDate') startDateStr: string,
-  @Query('endDate') endDateStr: string,
-  @Query('limit') limitStr?: string,
-) {
-  const startDate = this.parseDate(startDateStr, 'startDate');
-  const endDate = this.parseDate(endDateStr, 'endDate');
-  const limit = limitStr ? Number(limitStr) : undefined;
-
-  return this.LeadDataService.deleteZoominfoLeadsByDateRange(
-    startDate,
-    endDate,
-    limit,
-  );
-}
-
-
+    return this.LeadDataService.deleteZoominfoLeadsByDateRange(
+      startDate,
+      endDate,
+      limit,
+    );
+  }
 
   @Delete('all-DELETE')
-    @HttpCode(HttpStatus.OK)
-    async deleteAllData() {
-        return await this.LeadDataService.deleteAllLeads();
-    }
+  @HttpCode(HttpStatus.OK)
+  async deleteAllData() {
+    return await this.LeadDataService.deleteAllLeads();
+  }
 
-  @Get('export')
-  // async exportCsv(@Query() query: Record<string, any>, @Res() res: Response) {
-  //   const { csv, count } = await this.LeadDataService.exportToCsv(query);
-  //   const filename = `leads_export_${Date.now()}.csv`;
-  //   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  //   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  //   res.status(HttpStatus.OK).send(csv);
-  // }
-
-  // ==============================
-  // 📥 GET ENDPOINTS (Model-wise)
-  // ==============================
-
-  // 🔹 Sales Navigator - Find All
-
-  // 🔹 ZoomInfo - Find All
-
-  // 🔹 Apollo - Find All
-
-  // filter api all
   // ====================Apollo=========================================
-  // ====================Apollo=========================================
-  // ====================Apollo=========================================
-
-  
 
   @Get('job_titles22')
   async getJobTitles2(@Query('search') search: string) {
-  console.log("hi")
+    console.log('hi');
   }
 
-
-   @Get('apollo')
+  @Get('apollo')
   async findAllApollo(
     @Query('q') q: string,
     @Query('email_status') email_status: string,
     @Query() query: Record<string, any>,
-     @Req() req) {
-
+    @Req() req,
+  ) {
     if (q) {
       query.q = q;
     }
@@ -168,14 +143,23 @@ async deleteZoominfoByDate(
     return this.LeadDataService.findAllApollo(query, req.user, email_status);
   }
 
- //f
-  @Get('job_titless')
+  @Get('apollo/export')
+  // @UseGuards(AuthGuard('jwt')) // Uncomment if using authentication
+  async exportApolloLeads(
+    @Query() query: Record<string, any>,
+    @Res({ passthrough: true }) res: Response, // Important for streaming the response
+  ) {
+    // The service handles setting headers and streaming the file directly to the response object (res)
+    return this.LeadDataService.exportApolloCsv(query, res);
+    // Note: Since the service streams the file, the controller does not return JSON data.
+    // Ensure this route is handled properly by Express/NestJS streaming middleware.
+  }
+
+  //f
+  @Get('job_titles')
   async getJobTitles(@Query('search') search: string) {
     return this.LeadDataService.getJobTitles(search);
   }
- 
- 
- 
 
   @Get('industry')
   async getIndustry(@Query('search') search: string) {
@@ -196,7 +180,7 @@ async deleteZoominfoByDate(
   async getWebsite(@Query('search') search: string) {
     return this.LeadDataService.getWebsite(search);
   }
-  // 
+  //
   @Get('company_linkedin')
   async getCompanyLinkedin(@Query('search') search: string) {
     return this.LeadDataService.getCompanyLinkedin(search);
@@ -221,7 +205,7 @@ async deleteZoominfoByDate(
   async getAnnualRevenue(@Query('search') search: string) {
     return this.LeadDataService.getAnnualRevenue(search);
   }
-  // 
+  //
   @Get('demoed')
   async getDemoed(@Query('search') search: string) {
     return this.LeadDataService.getDemoed(search);
@@ -232,18 +216,15 @@ async deleteZoominfoByDate(
   @Get('zoominfo')
   async findAllZoominfo(
     @Query('q') q: string,
-    @Query() query: Record<string, any>, 
-    @Req() req) {
-
+    @Query() query: Record<string, any>,
+    @Req() req,
+  ) {
     if (q) {
       query.q = q;
     }
 
     return this.LeadDataService.findAllZoominfo(query, req.user);
   }
-
-  
-
 
   @Get('email')
   async getEmail(@Query('search') search: string) {
@@ -296,10 +277,10 @@ async deleteZoominfoByDate(
 
   @Get('sales-navigator')
   async findAllSalesNavigator(
-    @Query('q') q:string,
+    @Query('q') q: string,
     @Query() query: Record<string, any>,
-    @Req() req) {
- 
+    @Req() req,
+  ) {
     if (q) {
       query.q = q;
     }
@@ -342,8 +323,6 @@ async deleteZoominfoByDate(
   async getlocation(@Query('search') search: string) {
     return this.LeadDataService.getLocation(search);
   }
- 
+
   // search====================================
-
-
 }
