@@ -1014,300 +1014,175 @@ private async deleteWithLimit(
 
   // ==================== APOLLO LEADS ====================
 
-  // ======================================
-  // Private Helper: Generates the reusable Prisma WHERE clause with detailed filtering
-  // This function centralizes all the filtering logic for both listing and export.
-  // ======================================
-  private _getApolloLeadsWhere(query: Record<string, any>): any {
-    const where: any = { deleted_at: null };
-    where.AND = [];
+  async findAllApollo(query: Record<string, any>, user: any) {
+    return this.ApolloLead('apolloLead', query, user);
+  }
 
-    // ======== 1. Search query 'q' (across multiple fields) ========
-    if (query.q) {
-      const searchTerm = String(query.q).trim();
+private async ApolloLead(
+  model: 'apolloLead',
+  query: Record<string, any>,
+  user: any,
+) {
+  const page = Number(query.page) > 0 ? Number(query.page) : 1;
+  const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
+  const skip = (page - 1) * limit;
+
+  const where: any = { deleted_at: null };
+  where.AND = [];
+
+  // 🔍 Free text search (q)
+  if (query.q) {
+    const searchTerm = String(query.q).trim();
+    where.AND.push({
+      OR: [
+        { first_name: { contains: searchTerm, mode: 'insensitive' } },
+        { last_name: { contains: searchTerm, mode: 'insensitive' } },
+        { title: { contains: searchTerm, mode: 'insensitive' } },
+        { company_name: { contains: searchTerm, mode: 'insensitive' } },
+        { email: { contains: searchTerm, mode: 'insensitive' } },
+        { city: { contains: searchTerm, mode: 'insensitive' } },
+        { country: { contains: searchTerm, mode: 'insensitive' } },
+        { industry: { contains: searchTerm, mode: 'insensitive' } },
+        { keywords: { contains: searchTerm, mode: 'insensitive' } },
+        { website: { contains: searchTerm, mode: 'insensitive' } },
+      ],
+    });
+  }
+
+  // 🔧 Dynamic Filters
+  for (const key of Object.keys(query)) {
+    if (['page', 'limit', 'sortBy', 'order', 'q', 'min_employee', 'max_employee', 'min_annual_revenue', 'max_annual_revenue'].includes(key))
+      continue;
+
+    const value = query[key];
+    if (!value) continue;
+
+    let values: string[] = [];
+    try {
+      values = Array.isArray(value) ? value : JSON.parse(value);
+      if (!Array.isArray(values)) values = [String(value)];
+    } catch {
+      values = [String(value)];
+    }
+
+    if (key === 'name') {
       where.AND.push({
-        OR: [
-          { first_name: { contains: searchTerm, mode: 'insensitive' } },
-          { last_name: { contains: searchTerm, mode: 'insensitive' } },
-          { title: { contains: searchTerm, mode: 'insensitive' } },
-          { company_name: { contains: searchTerm, mode: 'insensitive' } },
-          { email: { contains: searchTerm, mode: 'insensitive' } },
-          { city: { contains: searchTerm, mode: 'insensitive' } },
-          { country: { contains: searchTerm, mode: 'insensitive' } },
-          { industry: { contains: searchTerm, mode: 'insensitive' } },
-          { keywords: { contains: searchTerm, mode: 'insensitive' } },
-          { website: { contains: searchTerm, mode: 'insensitive' } },
-        ],
+        OR: values.flatMap((v) => [
+          { first_name: { contains: v, mode: 'insensitive' } },
+          { last_name: { contains: v, mode: 'insensitive' } },
+        ]),
+      });
+    } else if (key === 'job_titles' || key === 'job_titless') {
+      where.AND.push({
+        OR: values.map((v) => ({ title: { contains: v, mode: 'insensitive' } })),
+      });
+    } else if (key === 'keyword') {
+      where.AND.push({
+        OR: values.map((v) => ({ keywords: { contains: v, mode: 'insensitive' } })),
+      });
+    } else if (key === 'company_linkedin') {
+      where.AND.push({
+        OR: values.map((v) => ({
+          company_uinkedin_url: { contains: v, mode: 'insensitive' },
+        })),
+      });
+    } else if (key === 'country') {
+      where.AND.push({
+        OR: values.map((v) => ({ country: { contains: v, mode: 'insensitive' } })),
+      });
+    }  else if (key === 'city') {
+      where.AND.push({
+        OR: values.map((v) => ({ city: { contains: v, mode: 'insensitive' } })),
+      });
+    } else if (key === 'state') {
+      where.AND.push({
+        OR: values.map((v) => ({ state: { contains: v, mode: 'insensitive' } })),
+      });
+    } else if (key === 'email_status') {
+      where.AND.push({
+        OR: values.map((v) => ({ email_status: { contains: v, mode: 'insensitive' } })),
+      });
+    }else if (key === 'annual_revenue') {
+      where.AND.push({
+        OR: values.map((v) => ({ annual_revenue: { contains: v, mode: 'insensitive' } })),
+      });
+    } else if (key === 'demoed') {
+      where.AND.push({
+        OR: values.map((v) => ({ demoed: { contains: v, mode: 'insensitive' } })),
+      });
+    } else {
+      where.AND.push({
+        OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
       });
     }
-
-    // ======== 2. Other specific filters ========
-    for (const key of Object.keys(query)) {
-      if (['page', 'limit', 'sortBy', 'order', 'q'].includes(key)) continue;
-      const value = query[key];
-      if (!value) continue;
-
-      let values: string[] = [];
-      try {
-        // Safely parse array or treat as string array
-        values = Array.isArray(value) ? value : JSON.parse(value);
-        if (!Array.isArray(values)) values = [String(value)];
-      } catch {
-        values = [String(value)];
-      }
-
-      // Filter mapping logic
-      if (key === 'name') {
-        where.AND.push({
-          OR: values.flatMap((v) => [
-            { first_name: { contains: v, mode: 'insensitive' } },
-            { last_name: { contains: v, mode: 'insensitive' } },
-          ]),
-        });
-      }
-
-      // Map 'job_titles' or 'job_titless' query keys to the 'title' field
-      else if (key === 'job_titles' || key === 'job_titless') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            title: { contains: v, mode: 'insensitive' },
-          })),
-        });
-      }
-
-      // Map 'keyword' query key to the 'keywords' field
-      else if (key === 'keyword') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            keywords: { contains: v, mode: 'insensitive' },
-          })),
-        });
-      }
-
-      // Map 'company_linkedin' query key to the 'company_uinkedin_url' field
-      else if (key === 'company_linkedin') {
-        where.AND.push({
-          OR: values.map((v) => ({
-            company_uinkedin_url: { contains: v, mode: 'insensitive' },
-          })),
-        });
-      }
-
-      // Standard direct field mappings (country, city, state, etc.)
-      else if (
-        [
-          'country',
-          'email_status',
-          'city',
-          'state',
-          'annual_revenue',
-          'demoed',
-        ].includes(key)
-      ) {
-        where.AND.push({
-          OR: values.map((v) => ({
-            [key]: { contains: v, mode: 'insensitive' },
-          })),
-        });
-      }
-
-      // Default fallback for any other key
-      else {
-        where.AND.push({
-          OR: values.map((v) => ({
-            [key]: { contains: v, mode: 'insensitive' },
-          })),
-        });
-      }
-    }
-
-    if (where.AND.length === 0) delete where.AND;
-
-    return where;
   }
 
-  // ===========================
-  // Standard listing function (Offset Pagination)
-  // ===========================
-  async findAllApollo(
-    query: Record<string, any>,
-    user: any,
-    email_status: string,
-  ) {
-    return this.ApolloLead('apolloLead', query, user, email_status);
+  if (where.AND.length === 0) delete where.AND;
+
+  const sortBy = query.sortBy || 'created_at';
+  const order =
+    query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+      ? (query.order.toLowerCase() as Prisma.SortOrder)
+      : Prisma.SortOrder.desc;
+
+  const orderBy = { [sortBy]: order };
+
+  const delegate: any = (this.prisma as any)[model];
+
+  const [data, total] = await Promise.all([
+    delegate.findMany({ where, take: limit, skip, orderBy }),
+    delegate.count({ where }),
+  ]);
+
+  // ==================================
+  // 🔥 Employee Range Filter
+  // ==================================
+  let finalData = data;
+
+  if (query.min_employee || query.max_employee) {
+    const min = Number(query.min_employee) || 0;
+    const max = Number(query.max_employee) || 999999;
+
+    finalData = finalData.filter((item) => {
+      if (!item.employees) return false;
+      const num = Number(item.employees.replace(/\D/g, ''));
+      if (isNaN(num)) return false;
+      return num >= min && num <= max;
+    });
   }
 
-  // ======================================
-  // Core function for listing
-  // ======================================
-  private async ApolloLead(
-    model: 'apolloLead',
-    query: Record<string, any>,
-    user: any,
-    email_status: string,
-  ) {
-    const page = Number(query.page) > 0 ? Number(query.page) : 1;
-    const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
-    const skip = (page - 1) * limit;
+  // ==================================
+  // 🔥 Annual Revenue Range Filter
+  // ==================================
+  if (query.min_annual_revenue || query.max_annual_revenue) {
+    const minR = Number(query.min_annual_revenue) || 0;
+    const maxR = Number(query.max_annual_revenue) || 9999999;
 
-    // Use the central WHERE clause generator
-    const where = this._getApolloLeadsWhere(query);
-
-    const sortBy = query.sortBy || 'created_at';
-    const order =
-      query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-        ? (query.order.toLowerCase() as 'asc' | 'desc')
-        : 'desc';
-    const orderBy = { [sortBy]: order };
-
-    const delegate: any = (this.prisma as any)[model];
-
-    const findArgs: any = {
-      where,
-      orderBy,
-      take: limit,
-      skip: skip,
-    };
-
-    const [data, total] = await Promise.all([
-      delegate.findMany(findArgs),
-      delegate.count({ where }),
-    ]);
-
-    return {
-      success: true,
-      message: 'Data fetched successfully',
-      data,
-      meta: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit),
-      },
-      access: 'authorized',
-    };
+    finalData = finalData.filter((item) => {
+      if (!item.annual_revenue) return false;
+      const num = Number(item.annual_revenue.replace(/\D/g, ''));
+      if (isNaN(num)) return false;
+      return num >= minR && num <= maxR;
+    });
   }
 
-  // ======================================
-  // Private function for fetching data in small, sequential batches using cursor pagination
-  // This is used for stable large-scale export.
-  // ======================================
-  private async _fetchApolloLeadsBatch(
-    model: 'apolloLead',
-    query: Record<string, any>,
-    batchSize: number,
-    lastId: number | null,
-  ): Promise<any[]> {
-    // Use the central filter helper
-    const where = this._getApolloLeadsWhere(query);
-    const delegate: any = (this.prisma as any)[model];
+  return {
+    success: true,
+    message: 'Data fetched successfully',
+    data: finalData,
+    meta: {
+      total: finalData.length,
+      page,
+      limit,
+      pages: Math.ceil(finalData.length / limit),
+    },
+    access: 'authorized',
+  };
+}
 
-    const findArgs: any = {
-      where,
-      take: batchSize,
-      orderBy: { id: 'asc' }, // Must order by the cursor column for stable pagination
-    };
 
-    if (lastId !== null) {
-      findArgs.cursor = { id: lastId };
-      findArgs.skip = 1; // Skip the cursor record itself
-    }
 
-    return delegate.findMany(findArgs);
-  }
 
-  // ============================
-  // Export filtered Apollo leads as CSV (Batched/Chunked)
-  // The logic for splitting into 50,000 record chunks is implemented here.
-  // ============================
-  async exportApolloCsv(query: Record<string, any>, res: Response) {
-    // 50,000 রেকর্ড/ফাইল অনুযায়ী লজিক্যাল চঙ্ক তৈরি হবে (যেমনটি আপনি চেয়েছিলেন)
-    const FILE_SIZE_LIMIT = 50000;
-    // ডেটাবেস থেকে একবারে নিরাপদে আনার জন্য ছোট ব্যাচ সাইজ
-    const DB_BATCH_SIZE = 5000;
-
-    const delegate: any = (this.prisma as any)['apolloLead'];
-    const where = this._getApolloLeadsWhere(query);
-
-    // 1. Get total count based on filters
-    const totalCount = await delegate.count({ where });
-
-    if (totalCount === 0) {
-      res.status(404).send('No data found for the given filters.');
-      return;
-    }
-
-    // 2. Calculate file split
-    const numFiles = Math.ceil(totalCount / FILE_SIZE_LIMIT);
-
-    // NOTE: Node.js/Express-এ একবারে একাধিক ফাইল ডাউনলোড করতে সাধারণত ZIP স্ট্রিম ব্যবহার করা হয়।
-    // এখানে সেই লাইব্রেরি ব্যবহার না করতে পারার কারণে, সমস্ত ডেটা একটি সিঙ্গেল CSV হিসেবে স্ট্রিম করা হচ্ছে,
-    // কিন্তু লজিকটি 50k চঙ্ক-ভিত্তিক এক্সপোর্ট এর জন্য তৈরি করা হয়েছে।
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="apollo_leads_export_${timestamp}.csv"`,
-    );
-
-    const csvStream = format({ headers: true });
-    csvStream.pipe(res);
-
-    let lastId: number | null = null;
-    let recordsExported = 0;
-    let fileNumber = 1;
-
-    try {
-      console.log(
-        `Total records: ${totalCount}. Calculated to be split into ${numFiles} logical file(s) of ${FILE_SIZE_LIMIT} max records.`,
-      );
-
-      // Loop until all records are exported
-      while (recordsExported < totalCount) {
-        // Fetch next batch using cursor pagination
-        const batch = await this._fetchApolloLeadsBatch(
-          'apolloLead',
-          query,
-          DB_BATCH_SIZE,
-          lastId,
-        );
-
-        if (batch.length === 0) break;
-
-        // Write the batch to the stream
-        for (const row of batch) {
-          // লজিক্যাল চঙ্ক চেক (যদি ZIP ইমপ্লিমেন্ট করা হতো, তবে এখানে নতুন CSV ফাইল শুরু হতো)
-          if (recordsExported > 0 && recordsExported % FILE_SIZE_LIMIT === 0) {
-            fileNumber++;
-            console.log(
-              `--- Starting new logical file (File ${fileNumber}) ---`,
-            );
-          }
-
-          // Write the row
-          csvStream.write(row);
-
-          recordsExported++;
-        }
-
-        // Update the cursor for the next database fetch
-        lastId = batch[batch.length - 1].id;
-      }
-
-      csvStream.end();
-    } catch (error) {
-      console.error('Error during CSV export:', error);
-      // Ensure the stream is closed on error
-      csvStream.end();
-      // Handle error response gracefully
-      if (!res.headersSent) {
-        res.status(500).send('Error generating export file.');
-      } else {
-        res.end();
-      }
-    }
-  }
 
   async getJobTitles(search?: string) {
     try {

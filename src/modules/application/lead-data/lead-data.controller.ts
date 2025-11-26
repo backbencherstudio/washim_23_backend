@@ -38,7 +38,7 @@ export class LeadDataController {
 
   // ============================== import controller ==============================
   @Post('import')
-  @UseInterceptors(FileInterceptor('file')) 
+  @UseInterceptors(FileInterceptor('file'))
   // @UseGuards(JwtAuthGuard)
   async importLeads(
     @UploadedFile() file: Express.Multer.File,
@@ -129,31 +129,19 @@ export class LeadDataController {
     console.log('hi');
   }
 
-  @Get('apollo')
-  async findAllApollo(
-    @Query('q') q: string,
-    @Query('email_status') email_status: string,
-    @Query() query: Record<string, any>,
-    @Req() req,
-  ) {
-    if (q) {
-      query.q = q;
-    }
-
-    return this.LeadDataService.findAllApollo(query, req.user, email_status);
+@Get('apollo')
+async findAllApollo(
+  @Query('q') q: string,
+  @Query() query: Record<string, any>,
+  @Req() req,
+) {
+  if (q) {
+    query.q = q;
   }
 
-  @Get('apollo/export')
-  // @UseGuards(AuthGuard('jwt')) // Uncomment if using authentication
-  async exportApolloLeads(
-    @Query() query: Record<string, any>,
-    @Res({ passthrough: true }) res: Response, // Important for streaming the response
-  ) {
-    // The service handles setting headers and streaming the file directly to the response object (res)
-    return this.LeadDataService.exportApolloCsv(query, res);
-    // Note: Since the service streams the file, the controller does not return JSON data.
-    // Ensure this route is handled properly by Express/NestJS streaming middleware.
-  }
+  return this.LeadDataService.findAllApollo(query, req.user);
+}
+
 
   //f
   @Get('job_titles')
