@@ -1669,6 +1669,7 @@ private async ZoominfoLead(
         { phone: { contains: search, mode: 'insensitive' } },
         { work_phone: { contains: search, mode: 'insensitive' } },
         { lead_location: { contains: search, mode: 'insensitive' } },
+        { location: { contains: search, mode: 'insensitive' } },
         { lead_divison: { contains: search, mode: 'insensitive' } },
         { lead_titles: { contains: search, mode: 'insensitive' } },
         { seniority_level: { contains: search, mode: 'insensitive' } },
@@ -1702,7 +1703,7 @@ private async ZoominfoLead(
 
   // 🔹 Dynamic filters
   for (const key of Object.keys(query)) {
-    if (['page', 'limit', 'name', 'sortBy', 'order', 'q', 'search', 'email'].includes(key))
+    if (['page', 'limit', 'name', 'sortBy', 'order', 'q', 'search', 'email', 'location'].includes(key))
       continue;
 
     const value = query[key];
