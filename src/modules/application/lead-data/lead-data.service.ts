@@ -1295,11 +1295,14 @@ private async ApolloLead(
 
   const delegate: any = (this.prisma as any)[model];
 
-  const data = await delegate.findMany({
+  // ==================================
+  // 🔹 Fetch all if no limit/filters
+  // ==================================
+  let data = await delegate.findMany({
     where,
     orderBy,
-    take: limit,  // will be undefined if you want all
-    skip,         // will be undefined if you want all
+    take: limit,  // undefined = all
+    skip,
   });
 
   let finalData = data;
@@ -1347,6 +1350,7 @@ private async ApolloLead(
     access: 'authorized',
   };
 }
+
 
 
 
