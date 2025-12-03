@@ -1389,13 +1389,13 @@ private async ApolloLead(
 ) {
   // 🔹 Pagination setup
   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  const limit = Number(query.limit) > 0 ? Number(query.limit) : 20; // default 20
+  const limit = Number(query.limit) > 0 ? Number(query.limit) : 20; 
   const skip = (page - 1) * limit;
 
   const where: any = { deleted_at: null };
   where.AND = [];
 
-  // 🔹 Dynamic filters (Non-range filters applied to DB query)
+  // 🔹 Dynamic filters (non-range)
   for (const key of Object.keys(query)) {
     if (
       [
@@ -1423,6 +1423,10 @@ private async ApolloLead(
       values = [String(value)];
     }
 
+    const orClauses = values.map((v) => ({
+      [key]: { contains: v, mode: 'insensitive' },
+    }));
+
     switch (key) {
       case 'name':
         where.AND.push({
@@ -1432,45 +1436,8 @@ private async ApolloLead(
           ]),
         });
         break;
-      case 'job_titles':
-      case 'job_titless':
-        where.AND.push({
-          OR: values.map((v) => ({
-            title: { contains: v, mode: 'insensitive' },
-          })),
-        });
-        break;
-      case 'keyword':
-        where.AND.push({
-          OR: values.map((v) => ({
-            keywords: { contains: v, mode: 'insensitive' },
-          })),
-        });
-        break;
-      case 'company_linkedin':
-        where.AND.push({
-          OR: values.map((v) => ({
-            company_uinkedin_url: { contains: v, mode: 'insensitive' },
-          })),
-        });
-        break;
-      case 'country':
-      case 'city':
-      case 'state':
-      case 'email_status':
-      case 'demoed':
-        where.AND.push({
-          OR: values.map((v) => ({
-            [key]: { contains: v, mode: 'insensitive' },
-          })),
-        });
-        break;
       default:
-        where.AND.push({
-          OR: values.map((v) => ({
-            [key]: { contains: v, mode: 'insensitive' },
-          })),
-        });
+        where.AND.push({ OR: orClauses });
     }
   }
 
@@ -1485,54 +1452,40 @@ private async ApolloLead(
 
   const delegate: any = (this.prisma as any)[model];
 
-// --- 🚀 Range Filters Fix (STRING ONLY) ---
-const finalWhere: any = { ...where };
-if (!finalWhere.AND) finalWhere.AND = [];
+  // --- 🚀 Employees & Annual Revenue Filters ---
+  const minEmp = query.min_employee ? Number(query.min_employee) : null;
+  const maxEmp = query.max_employee ? Number(query.max_employee) : null;
+  const minRev = query.min_annual_revenue ? Number(query.min_annual_revenue) : null;
+  const maxRev = query.max_annual_revenue ? Number(query.max_annual_revenue) : null;
 
-// Helper to safely convert string/any to number
-const toNumber = (value: any) => {
-  const num = Number(value);
-  return isNaN(num) ? undefined : num;
-};
-
-// Employee range filter
-const minEmp = query.min_employee ? String(query.min_employee) : undefined;
-const maxEmp = query.max_employee ? String(query.max_employee) : undefined;
-
-if (minEmp !== undefined || maxEmp !== undefined) {
-  const empClause: any = {};
-  if (minEmp !== undefined) empClause.gte = minEmp;
-  if (maxEmp !== undefined) empClause.lte = maxEmp;
-  finalWhere.AND.push({ employees: empClause });
-}
-
-// Annual revenue range filter
-const minRev = query.min_annual_revenue ? String(query.min_annual_revenue) : undefined;
-const maxRev = query.max_annual_revenue ? String(query.max_annual_revenue) : undefined;
-
-if (minRev !== undefined || maxRev !== undefined) {
-  const revClause: any = {};
-  if (minRev !== undefined) revClause.gte = minRev;
-  if (maxRev !== undefined) revClause.lte = maxRev;
-  finalWhere.AND.push({ annual_revenue: revClause });
-}
-
-// Cleanup if no filters applied
-if (finalWhere.AND.length === 0) delete finalWhere.AND;
-
-
-  // 🔹 Fetch total count
-  const newTotal = await delegate.count({ where: finalWhere });
-
-  // 🔹 Fetch paginated data
-  const paginatedData = await delegate.findMany({
-    where: finalWhere,
+  // --- Fetch all matching rows first (without numeric filtering) ---
+  const allData = await delegate.findMany({
+    where,
     orderBy,
-    skip,
-    take: limit,
   });
 
-  // 🔹 Return
+  // --- Apply numeric filtering in JS if min/max are provided ---
+  let filteredData = allData;
+  if (minEmp !== null || maxEmp !== null || minRev !== null || maxRev !== null) {
+    filteredData = allData.filter((row: any) => {
+      const emp = Number(row.employees);
+      const rev = Number(row.annual_revenue);
+
+      if (minEmp !== null && emp < minEmp) return false;
+      if (maxEmp !== null && emp > maxEmp) return false;
+
+      if (minRev !== null && rev < minRev) return false;
+      if (maxRev !== null && rev > maxRev) return false;
+
+      return true;
+    });
+  }
+
+  const newTotal = filteredData.length;
+
+  // --- Paginate filtered data ---
+  const paginatedData = filteredData.slice(skip, skip + limit);
+
   return {
     success: true,
     message: 'Data fetched successfully',
@@ -1546,6 +1499,7 @@ if (finalWhere.AND.length === 0) delete finalWhere.AND;
     access: 'authorized',
   };
 }
+
 
 
   // ======================old code =======================
@@ -2293,17 +2247,16 @@ if (finalWhere.AND.length === 0) delete finalWhere.AND;
         values = [String(value)];
       }
 
-      // LOCATION FIX: Specific handling for the 'location' filter key to query multiple fields
       if (key === 'location') {
+        const phrase = values.join(' '); // "Greater Oxford Area"
+
         where.AND.push({
-          OR: values.flatMap((v) => [
-            // Search both lead_location and general location fields for the specified values
-            { lead_location: { contains: v, mode: 'insensitive' } },
-            { location: { contains: v, mode: 'insensitive' } },
-          ]),
+          OR: [
+            { lead_location: { contains: phrase, mode: 'insensitive' } },
+            { location: { contains: phrase, mode: 'insensitive' } },
+          ],
         });
       } else {
-        // Existing logic for all other dynamic filters
         where.AND.push({
           OR: values.map((v) => ({
             [key]: { contains: v, mode: 'insensitive' },
@@ -2311,7 +2264,6 @@ if (finalWhere.AND.length === 0) delete finalWhere.AND;
         });
       }
     }
-
     // 🔹 Email status filter
     if (query.email) {
       if (query.email === 'notAvailable') {
