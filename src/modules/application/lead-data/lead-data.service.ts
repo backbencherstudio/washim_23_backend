@@ -1382,177 +1382,163 @@ export class LeadDataService {
   //   };
   // }
 
-  private async ApolloLead(
-    model: 'apolloLead',
-    query: Record<string, any>,
-    user: any,
-  ) {
-    // 🔹 Pagination setup
-    const page = Number(query.page) > 0 ? Number(query.page) : 1;
-    const limit = Number(query.limit) > 0 ? Number(query.limit) : 20; // default 20
-    const skip = (page - 1) * limit;
+private async ApolloLead(
+  model: 'apolloLead',
+  query: Record<string, any>,
+  user: any,
+) {
+  // 🔹 Pagination setup
+  const page = Number(query.page) > 0 ? Number(query.page) : 1;
+  const limit = Number(query.limit) > 0 ? Number(query.limit) : 20; // default 20
+  const skip = (page - 1) * limit;
 
-    const where: any = { deleted_at: null };
-    where.AND = [];
+  const where: any = { deleted_at: null };
+  where.AND = [];
 
-    // ... (Free text search (q) and Dynamic filters setup remains the same) ...
+  // 🔹 Dynamic filters (Non-range filters applied to DB query)
+  for (const key of Object.keys(query)) {
+    if (
+      [
+        'page',
+        'limit',
+        'sortBy',
+        'order',
+        'q',
+        'min_employee',
+        'max_employee',
+        'min_annual_revenue',
+        'max_annual_revenue',
+      ].includes(key)
+    )
+      continue;
 
-    // 🔹 Dynamic filters (Non-range filters applied to DB query)
-    for (const key of Object.keys(query)) {
-      if (
-        [
-          'page',
-          'limit',
-          'sortBy',
-          'order',
-          'q',
-          'min_employee',
-          'max_employee',
-          'min_annual_revenue',
-          'max_annual_revenue',
-        ].includes(key)
-      )
-        continue;
+    const value = query[key];
+    if (!value) continue;
 
-      const value = query[key];
-      if (!value) continue;
-
-      let values: string[] = [];
-      try {
-        values = Array.isArray(value) ? value : JSON.parse(value);
-        if (!Array.isArray(values)) values = [String(value)];
-      } catch {
-        values = [String(value)];
-      }
-
-      switch (key) {
-        case 'name':
-          where.AND.push({
-            OR: values.flatMap((v) => [
-              { first_name: { contains: v, mode: 'insensitive' } },
-              { last_name: { contains: v, mode: 'insensitive' } },
-            ]),
-          });
-          break;
-        case 'job_titles':
-        case 'job_titless':
-          where.AND.push({
-            OR: values.map((v) => ({
-              title: { contains: v, mode: 'insensitive' },
-            })),
-          });
-          break;
-        case 'keyword':
-          where.AND.push({
-            OR: values.map((v) => ({
-              keywords: { contains: v, mode: 'insensitive' },
-            })),
-          });
-          break;
-        case 'company_linkedin':
-          where.AND.push({
-            OR: values.map((v) => ({
-              company_uinkedin_url: { contains: v, mode: 'insensitive' },
-            })),
-          });
-          break;
-        case 'country':
-        case 'city':
-        case 'state':
-        case 'email_status':
-        case 'demoed':
-          where.AND.push({
-            OR: values.map((v) => ({
-              [key]: { contains: v, mode: 'insensitive' },
-            })),
-          });
-          break;
-        default:
-          where.AND.push({
-            OR: values.map((v) => ({
-              [key]: { contains: v, mode: 'insensitive' },
-            })),
-          });
-      }
+    let values: string[] = [];
+    try {
+      values = Array.isArray(value) ? value : JSON.parse(value);
+      if (!Array.isArray(values)) values = [String(value)];
+    } catch {
+      values = [String(value)];
     }
 
-    if (where.AND.length === 0) delete where.AND;
-
-    const sortBy = query.sortBy || 'created_at';
-    const order =
-      query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-        ? (query.order.toLowerCase() as Prisma.SortOrder)
-        : 'desc'; // Use 'desc' as string if Prisma type is unavailable
-    const orderBy = { [sortBy]: order };
-
-    const delegate: any = (this.prisma as any)[model];
-
-    // --- 🚀 Range Filters Fix START ---
-    const finalWhere: any = { ...where };
-    if (!finalWhere.AND) finalWhere.AND = [];
-
-    // Employee range filter (works for numeric or string DB field)
-    const minEmp = Number(query.min_employee);
-    const maxEmp = Number(query.max_employee);
-    if (!isNaN(minEmp) || !isNaN(maxEmp)) {
-      const empClause: any = {};
-      if (!isNaN(minEmp)) empClause.gte = minEmp;
-      if (!isNaN(maxEmp)) empClause.lte = maxEmp;
-
-      finalWhere.AND.push({
-        OR: [
-          { employees: empClause }, // numeric field
-          { employees: { gte: minEmp.toString(), lte: maxEmp.toString() } }, // string field
-        ],
-      });
+    switch (key) {
+      case 'name':
+        where.AND.push({
+          OR: values.flatMap((v) => [
+            { first_name: { contains: v, mode: 'insensitive' } },
+            { last_name: { contains: v, mode: 'insensitive' } },
+          ]),
+        });
+        break;
+      case 'job_titles':
+      case 'job_titless':
+        where.AND.push({
+          OR: values.map((v) => ({
+            title: { contains: v, mode: 'insensitive' },
+          })),
+        });
+        break;
+      case 'keyword':
+        where.AND.push({
+          OR: values.map((v) => ({
+            keywords: { contains: v, mode: 'insensitive' },
+          })),
+        });
+        break;
+      case 'company_linkedin':
+        where.AND.push({
+          OR: values.map((v) => ({
+            company_uinkedin_url: { contains: v, mode: 'insensitive' },
+          })),
+        });
+        break;
+      case 'country':
+      case 'city':
+      case 'state':
+      case 'email_status':
+      case 'demoed':
+        where.AND.push({
+          OR: values.map((v) => ({
+            [key]: { contains: v, mode: 'insensitive' },
+          })),
+        });
+        break;
+      default:
+        where.AND.push({
+          OR: values.map((v) => ({
+            [key]: { contains: v, mode: 'insensitive' },
+          })),
+        });
     }
-
-    // Annual revenue range filter (works for numeric or string DB field)
-    const minRev = Number(query.min_annual_revenue);
-    const maxRev = Number(query.max_annual_revenue);
-    if (!isNaN(minRev) || !isNaN(maxRev)) {
-      const revClause: any = {};
-      if (!isNaN(minRev)) revClause.gte = minRev;
-      if (!isNaN(maxRev)) revClause.lte = maxRev;
-
-      finalWhere.AND.push({
-        OR: [
-          { annual_revenue: revClause }, // numeric field
-          {
-            annual_revenue: { gte: minRev.toString(), lte: maxRev.toString() },
-          }, // string field
-        ],
-      });
-    }
-
-    if (finalWhere.AND.length === 0) delete finalWhere.AND;
-    // 3. Fetch the total count using the complete filter (efficient COUNT query)
-    const newTotal = await delegate.count({ where: finalWhere });
-
-    // 4. Fetch ONLY the necessary page of data (efficient SELECT with LIMIT/OFFSET)
-    const paginatedData = await delegate.findMany({
-      where: finalWhere, // Complete DB filters applied
-      orderBy,
-      skip, // Database skips (pages)
-      take: limit, // Database limits (records per page)
-    });
-
-    // --- পারফরম্যান্স FIX END ---
-
-    // 🔹 Final return structure
-    return {
-      success: true,
-      message: 'Data fetched successfully',
-      data: paginatedData, // Use the correctly paginated and filtered data
-      meta: {
-        total: newTotal, // Use the correct total count from the DB
-        page,
-        limit,
-        pages: Math.ceil(newTotal / limit), // Pages calculated on the correct total
-      },
-      access: 'authorized',
-    };
   }
+
+  if (where.AND.length === 0) delete where.AND;
+
+  const sortBy = query.sortBy || 'created_at';
+  const order =
+    query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+      ? (query.order.toLowerCase() as Prisma.SortOrder)
+      : 'desc';
+  const orderBy = { [sortBy]: order };
+
+  const delegate: any = (this.prisma as any)[model];
+
+  // --- 🚀 Range Filters Fix (STRING ONLY) ---
+  const finalWhere: any = { ...where };
+  if (!finalWhere.AND) finalWhere.AND = [];
+
+  // Employee range filter (string)
+  const minEmp = query.min_employee?.toString();
+  const maxEmp = query.max_employee?.toString();
+  if (minEmp || maxEmp) {
+    const empClause: any = {};
+    if (minEmp) empClause.gte = minEmp;
+    if (maxEmp) empClause.lte = maxEmp;
+
+    finalWhere.AND.push({ employees: empClause });
+  }
+
+  // Annual revenue range filter (string)
+  const minRev = query.min_annual_revenue?.toString();
+  const maxRev = query.max_annual_revenue?.toString();
+  if (minRev || maxRev) {
+    const revClause: any = {};
+    if (minRev) revClause.gte = minRev;
+    if (maxRev) revClause.lte = maxRev;
+
+    finalWhere.AND.push({ annual_revenue: revClause });
+  }
+
+  if (finalWhere.AND.length === 0) delete finalWhere.AND;
+
+  // 🔹 Fetch total count
+  const newTotal = await delegate.count({ where: finalWhere });
+
+  // 🔹 Fetch paginated data
+  const paginatedData = await delegate.findMany({
+    where: finalWhere,
+    orderBy,
+    skip,
+    take: limit,
+  });
+
+  // 🔹 Return
+  return {
+    success: true,
+    message: 'Data fetched successfully',
+    data: paginatedData,
+    meta: {
+      total: newTotal,
+      page,
+      limit,
+      pages: Math.ceil(newTotal / limit),
+    },
+    access: 'authorized',
+  };
+}
+
 
   // ======================old code =======================
 
