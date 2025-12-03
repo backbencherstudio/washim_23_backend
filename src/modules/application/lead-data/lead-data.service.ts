@@ -1485,33 +1485,41 @@ private async ApolloLead(
 
   const delegate: any = (this.prisma as any)[model];
 
-  // --- 🚀 Range Filters Fix (STRING ONLY) ---
-  const finalWhere: any = { ...where };
-  if (!finalWhere.AND) finalWhere.AND = [];
+// --- 🚀 Range Filters Fix (STRING ONLY) ---
+const finalWhere: any = { ...where };
+if (!finalWhere.AND) finalWhere.AND = [];
 
-  // Employee range filter (string)
-  const minEmp = query.min_employee?.toString();
-  const maxEmp = query.max_employee?.toString();
-  if (minEmp || maxEmp) {
-    const empClause: any = {};
-    if (minEmp) empClause.gte = minEmp;
-    if (maxEmp) empClause.lte = maxEmp;
+// Helper to safely convert string/any to number
+const toNumber = (value: any) => {
+  const num = Number(value);
+  return isNaN(num) ? undefined : num;
+};
 
-    finalWhere.AND.push({ employees: empClause });
-  }
+// Employee range filter
+const minEmp = query.min_employee ? String(query.min_employee) : undefined;
+const maxEmp = query.max_employee ? String(query.max_employee) : undefined;
 
-  // Annual revenue range filter (string)
-  const minRev = query.min_annual_revenue?.toString();
-  const maxRev = query.max_annual_revenue?.toString();
-  if (minRev || maxRev) {
-    const revClause: any = {};
-    if (minRev) revClause.gte = minRev;
-    if (maxRev) revClause.lte = maxRev;
+if (minEmp !== undefined || maxEmp !== undefined) {
+  const empClause: any = {};
+  if (minEmp !== undefined) empClause.gte = minEmp;
+  if (maxEmp !== undefined) empClause.lte = maxEmp;
+  finalWhere.AND.push({ employees: empClause });
+}
 
-    finalWhere.AND.push({ annual_revenue: revClause });
-  }
+// Annual revenue range filter
+const minRev = query.min_annual_revenue ? String(query.min_annual_revenue) : undefined;
+const maxRev = query.max_annual_revenue ? String(query.max_annual_revenue) : undefined;
 
-  if (finalWhere.AND.length === 0) delete finalWhere.AND;
+if (minRev !== undefined || maxRev !== undefined) {
+  const revClause: any = {};
+  if (minRev !== undefined) revClause.gte = minRev;
+  if (maxRev !== undefined) revClause.lte = maxRev;
+  finalWhere.AND.push({ annual_revenue: revClause });
+}
+
+// Cleanup if no filters applied
+if (finalWhere.AND.length === 0) delete finalWhere.AND;
+
 
   // 🔹 Fetch total count
   const newTotal = await delegate.count({ where: finalWhere });
