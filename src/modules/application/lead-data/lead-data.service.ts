@@ -1178,40 +1178,229 @@ private async deleteWithLimit(
 //   };
 // }
 
+// private async ApolloLead(
+//   model: 'apolloLead',
+//   query: Record<string, any>,
+//   user: any,
+// ) {
+//   // 🔹 Pagination setup
+//   const page = Number(query.page) > 0 ? Number(query.page) : 1;
+//   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20; // default 20
+//   const skip = (page - 1) * limit;
+
+//   const where: any = { deleted_at: null };
+//   where.AND = [];
+
+//   // 🔹 Free text search (q)
+//   if (query.q) {
+//     const searchTerm = String(query.q).trim();
+//     where.AND.push({
+//       OR: [
+//         { first_name: { contains: searchTerm, mode: 'insensitive' } },
+//         { last_name: { contains: searchTerm, mode: 'insensitive' } },
+//         { title: { contains: searchTerm, mode: 'insensitive' } },
+//         { company_name: { contains: searchTerm, mode: 'insensitive' } },
+//         { email: { contains: searchTerm, mode: 'insensitive' } },
+//         { city: { contains: searchTerm, mode: 'insensitive' } },
+//         { country: { contains: searchTerm, mode: 'insensitive' } },
+//         { industry: { contains: searchTerm, mode: 'insensitive' } },
+//         { keywords: { contains: searchTerm, mode: 'insensitive' } },
+//         { website: { contains: searchTerm, mode: 'insensitive' } },
+//         { location: { contains: searchTerm, mode: 'insensitive' } },
+//       ],
+//     });
+//   }
+
+//   // 🔹 Dynamic filters (Non-range filters applied to DB query)
+//   for (const key of Object.keys(query)) {
+//     if (
+//       [
+//         'page',
+//         'limit',
+//         'sortBy',
+//         'order',
+//         'q',
+//         'min_employee',
+//         'max_employee',
+//         'min_annual_revenue',
+//         'max_annual_revenue',
+//       ].includes(key)
+//     )
+//       continue;
+
+//     const value = query[key];
+//     if (!value) continue;
+
+//     let values: string[] = [];
+//     try {
+//       values = Array.isArray(value) ? value : JSON.parse(value);
+//       if (!Array.isArray(values)) values = [String(value)];
+//     } catch {
+//       values = [String(value)];
+//     }
+
+//     switch (key) {
+//       case 'name':
+//         where.AND.push({
+//           OR: values.flatMap((v) => [
+//             { first_name: { contains: v, mode: 'insensitive' } },
+//             { last_name: { contains: v, mode: 'insensitive' } },
+//           ]),
+//         });
+//         break;
+//       case 'job_titles':
+//       case 'job_titless':
+//         where.AND.push({
+//           OR: values.map((v) => ({ title: { contains: v, mode: 'insensitive' } })),
+//         });
+//         break;
+//       case 'keyword':
+//         where.AND.push({
+//           OR: values.map((v) => ({ keywords: { contains: v, mode: 'insensitive' } })),
+//         });
+//         break;
+//       case 'company_linkedin':
+//         where.AND.push({
+//           OR: values.map((v) => ({ company_uinkedin_url: { contains: v, mode: 'insensitive' } })),
+//         });
+//         break;
+//       case 'country':
+//       case 'city':
+//       case 'state':
+//       case 'email_status':
+//       case 'demoed':
+//         where.AND.push({
+//           OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
+//         });
+//         break;
+//       default:
+//         where.AND.push({
+//           OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
+//         });
+//     }
+//   }
+
+//   if (where.AND.length === 0) delete where.AND;
+
+//   const sortBy = query.sortBy || 'created_at';
+//   const order =
+//     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+//       ? (query.order.toLowerCase() as Prisma.SortOrder)
+//       : Prisma.SortOrder.desc;
+//   const orderBy = { [sortBy]: order };
+
+//   const delegate: any = (this.prisma as any)[model];
+
+//   // --- 🎯 FIX START: Fetch ALL data matching DB filters first ---
+  
+//   // Fetch all leads from the DB that match the DB-based 'where' filters
+//   const allData = await delegate.findMany({ where, orderBy });
+
+//   let allFilteredData = allData;
+
+//   // 🔹 Employee range filter (APPLIED IN MEMORY to calculate TRUE total)
+//   if (query.min_employee || query.max_employee) {
+//     const min = Number(query.min_employee) || 0;
+//     const max = Number(query.max_employee) || 999999;
+//     allFilteredData = allFilteredData.filter((item) => {
+//       if (!item.employees) return false;
+//       // Removes non-digit characters to parse the number
+//       const num = Number(item.employees.replace(/\D/g, '')); 
+//       return !isNaN(num) && num >= min && num <= max;
+//     });
+//   }
+
+//   // 🔹 Annual revenue range filter (APPLIED IN MEMORY to calculate TRUE total)
+//   if (query.min_annual_revenue || query.max_annual_revenue) {
+//     const minR = Number(query.min_annual_revenue) || 0;
+//     const maxR = Number(query.max_annual_revenue) || 99999999;
+//     allFilteredData = allFilteredData.filter((item) => {
+//       if (!item.annual_revenue) return false;
+//       // Removes non-digit characters to parse the number
+//       const num = Number(item.annual_revenue.replace(/\D/g, ''));
+//       return !isNaN(num) && num >= minR && num <= maxR;
+//     });
+//   }
+  
+//   // 🏆 Calculate the Correct Total
+//   const newTotal = allFilteredData.length;
+
+//   // 🔹 Apply Pagination to the fully filtered data
+//   const paginatedData = allFilteredData.slice(skip, skip + limit);
+
+//   // --- FIX END ---
+
+//   // 🔹 Final return structure
+//   return {
+//     success: true,
+//     message: 'Data fetched successfully',
+//     data: paginatedData, // Use the correctly paginated and filtered data
+//     meta: {
+//       total: newTotal, // Use the correct total count of all filtered items
+//       page,
+//       limit,
+//       pages: Math.ceil(newTotal / limit), // Pages calculated on the correct total
+//     },
+//     access: 'authorized',
+//   };
+// }
+
 private async ApolloLead(
   model: 'apolloLead',
   query: Record<string, any>,
   user: any,
 ) {
-  // 🔹 Pagination setup
+  // Pagination
   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  const limit = Number(query.limit) > 0 ? Number(query.limit) : 20; // default 20
+  const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
   const skip = (page - 1) * limit;
 
-  const where: any = { deleted_at: null };
-  where.AND = [];
+  const where: any = { deleted_at: null, AND: [] };
 
-  // 🔹 Free text search (q)
+  // SAFE JSON PARSE FUNCTION
+  const safeToArray = (value: any): string[] => {
+    if (value === null || value === undefined) return [];
+
+    // Already array
+    if (Array.isArray(value)) {
+      return value.map((v) => String(v ?? '')).filter((v) => v.length > 0);
+    }
+
+    // Try parsing JSON
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map((v) => String(v ?? '')).filter((v) => v.length > 0);
+      }
+      return [String(parsed ?? '')];
+    } catch {
+      return [String(value ?? '')];
+    }
+  };
+
+  // ========== FREE TEXT SEARCH ==========
   if (query.q) {
-    const searchTerm = String(query.q).trim();
-    where.AND.push({
-      OR: [
-        { first_name: { contains: searchTerm, mode: 'insensitive' } },
-        { last_name: { contains: searchTerm, mode: 'insensitive' } },
-        { title: { contains: searchTerm, mode: 'insensitive' } },
-        { company_name: { contains: searchTerm, mode: 'insensitive' } },
-        { email: { contains: searchTerm, mode: 'insensitive' } },
-        { city: { contains: searchTerm, mode: 'insensitive' } },
-        { country: { contains: searchTerm, mode: 'insensitive' } },
-        { industry: { contains: searchTerm, mode: 'insensitive' } },
-        { keywords: { contains: searchTerm, mode: 'insensitive' } },
-        { website: { contains: searchTerm, mode: 'insensitive' } },
-        { location: { contains: searchTerm, mode: 'insensitive' } },
-      ],
-    });
+    const searchTerm = String(query.q || '').trim();
+    if (searchTerm.length > 0) {
+      where.AND.push({
+        OR: [
+          { first_name: { contains: searchTerm, mode: 'insensitive' } },
+          { last_name: { contains: searchTerm, mode: 'insensitive' } },
+          { title: { contains: searchTerm, mode: 'insensitive' } },
+          { company_name: { contains: searchTerm, mode: 'insensitive' } },
+          { email: { contains: searchTerm, mode: 'insensitive' } },
+          { city: { contains: searchTerm, mode: 'insensitive' } },
+          { country: { contains: searchTerm, mode: 'insensitive' } },
+          { industry: { contains: searchTerm, mode: 'insensitive' } },
+          { keywords: { contains: searchTerm, mode: 'insensitive' } },
+          { website: { contains: searchTerm, mode: 'insensitive' } },
+          { location: { contains: searchTerm, mode: 'insensitive' } },
+        ],
+      });
+    }
   }
 
-  // 🔹 Dynamic filters (Non-range filters applied to DB query)
+  // ========== DYNAMIC FILTERS ==========
   for (const key of Object.keys(query)) {
     if (
       [
@@ -1228,123 +1417,122 @@ private async ApolloLead(
     )
       continue;
 
-    const value = query[key];
-    if (!value) continue;
+    const rawValue = query[key];
+    if (!rawValue) continue;
 
-    let values: string[] = [];
-    try {
-      values = Array.isArray(value) ? value : JSON.parse(value);
-      if (!Array.isArray(values)) values = [String(value)];
-    } catch {
-      values = [String(value)];
-    }
+    const values = safeToArray(rawValue);
+    if (values.length === 0) continue;
 
     switch (key) {
       case 'name':
         where.AND.push({
           OR: values.flatMap((v) => [
-            { first_name: { contains: v, mode: 'insensitive' } },
-            { last_name: { contains: v, mode: 'insensitive' } },
+            { first_name: { contains: String(v), mode: 'insensitive' } },
+            { last_name: { contains: String(v), mode: 'insensitive' } },
           ]),
         });
         break;
+
       case 'job_titles':
       case 'job_titless':
         where.AND.push({
-          OR: values.map((v) => ({ title: { contains: v, mode: 'insensitive' } })),
+          OR: values.map((v) => ({
+            title: { contains: String(v), mode: 'insensitive' },
+          })),
         });
         break;
+
       case 'keyword':
         where.AND.push({
-          OR: values.map((v) => ({ keywords: { contains: v, mode: 'insensitive' } })),
+          OR: values.map((v) => ({
+            keywords: { contains: String(v), mode: 'insensitive' },
+          })),
         });
         break;
+
       case 'company_linkedin':
         where.AND.push({
-          OR: values.map((v) => ({ company_uinkedin_url: { contains: v, mode: 'insensitive' } })),
+          OR: values.map((v) => ({
+            company_uinkedin_url: { contains: String(v), mode: 'insensitive' },
+          })),
         });
         break;
-      case 'country':
-      case 'city':
-      case 'state':
-      case 'email_status':
-      case 'demoed':
-        where.AND.push({
-          OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
-        });
-        break;
+
       default:
         where.AND.push({
-          OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
+          OR: values.map((v) => ({
+            [key]: { contains: String(v), mode: 'insensitive' },
+          })),
         });
     }
   }
 
   if (where.AND.length === 0) delete where.AND;
 
+  // Sort + order
   const sortBy = query.sortBy || 'created_at';
   const order =
     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
       ? (query.order.toLowerCase() as Prisma.SortOrder)
       : Prisma.SortOrder.desc;
+
   const orderBy = { [sortBy]: order };
 
   const delegate: any = (this.prisma as any)[model];
 
-  // --- 🎯 FIX START: Fetch ALL data matching DB filters first ---
-  
-  // Fetch all leads from the DB that match the DB-based 'where' filters
-  const allData = await delegate.findMany({ where, orderBy });
+  // ========== DB FILTERS (SAFE) ==========
+  const allData = await delegate.findMany({
+    where,
+    orderBy,
+  });
 
-  let allFilteredData = allData;
+  let allFilteredData = [...allData];
 
-  // 🔹 Employee range filter (APPLIED IN MEMORY to calculate TRUE total)
+  // ========= EMPLOYEE RANGE FILTER ==========
   if (query.min_employee || query.max_employee) {
     const min = Number(query.min_employee) || 0;
     const max = Number(query.max_employee) || 999999;
+
     allFilteredData = allFilteredData.filter((item) => {
-      if (!item.employees) return false;
-      // Removes non-digit characters to parse the number
-      const num = Number(item.employees.replace(/\D/g, '')); 
-      return !isNaN(num) && num >= min && num <= max;
+      const emp = item.employees;
+      if (!emp || typeof emp !== 'string') return false;
+      const num = Number(emp.replace(/\D/g, '')) || 0;
+      return num >= min && num <= max;
     });
   }
 
-  // 🔹 Annual revenue range filter (APPLIED IN MEMORY to calculate TRUE total)
+  // ========= ANNUAL REVENUE FILTER ==========
   if (query.min_annual_revenue || query.max_annual_revenue) {
-    const minR = Number(query.min_annual_revenue) || 0;
-    const maxR = Number(query.max_annual_revenue) || 99999999;
+    const min = Number(query.min_annual_revenue) || 0;
+    const max = Number(query.max_annual_revenue) || 999999999;
+
     allFilteredData = allFilteredData.filter((item) => {
-      if (!item.annual_revenue) return false;
-      // Removes non-digit characters to parse the number
-      const num = Number(item.annual_revenue.replace(/\D/g, ''));
-      return !isNaN(num) && num >= minR && num <= maxR;
+      const rev = item.annual_revenue;
+      if (!rev || typeof rev !== 'string') return false;
+      const num = Number(rev.replace(/\D/g, '')) || 0;
+      return num >= min && num <= max;
     });
   }
-  
-  // 🏆 Calculate the Correct Total
+
+  // Total Count
   const newTotal = allFilteredData.length;
 
-  // 🔹 Apply Pagination to the fully filtered data
+  // Pagination
   const paginatedData = allFilteredData.slice(skip, skip + limit);
 
-  // --- FIX END ---
-
-  // 🔹 Final return structure
   return {
     success: true,
     message: 'Data fetched successfully',
-    data: paginatedData, // Use the correctly paginated and filtered data
+    data: paginatedData,
     meta: {
-      total: newTotal, // Use the correct total count of all filtered items
+      total: newTotal,
       page,
       limit,
-      pages: Math.ceil(newTotal / limit), // Pages calculated on the correct total
+      pages: Math.ceil(newTotal / limit),
     },
     access: 'authorized',
   };
 }
-
 
 
 
