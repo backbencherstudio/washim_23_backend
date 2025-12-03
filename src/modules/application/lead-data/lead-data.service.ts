@@ -1192,8 +1192,8 @@ private async ApolloLead(
   user: any,
 ) {
   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
-  const skip = (page - 1) * limit;
+  const limit = Number(query.limit) > 0 ? Number(query.limit) : undefined; // undefined = no limit
+  const skip = limit ? (page - 1) * limit : undefined;
 
   const where: any = { deleted_at: null };
   where.AND = [];
@@ -1250,15 +1250,13 @@ private async ApolloLead(
       });
     } else if (key === 'company_linkedin') {
       where.AND.push({
-        OR: values.map((v) => ({
-          company_uinkedin_url: { contains: v, mode: 'insensitive' },
-        })),
+        OR: values.map((v) => ({ company_uinkedin_url: { contains: v, mode: 'insensitive' } })),
       });
     } else if (key === 'country') {
       where.AND.push({
         OR: values.map((v) => ({ country: { contains: v, mode: 'insensitive' } })),
       });
-    }  else if (key === 'city') {
+    } else if (key === 'city') {
       where.AND.push({
         OR: values.map((v) => ({ city: { contains: v, mode: 'insensitive' } })),
       });
@@ -1270,7 +1268,7 @@ private async ApolloLead(
       where.AND.push({
         OR: values.map((v) => ({ email_status: { contains: v, mode: 'insensitive' } })),
       });
-    }else if (key === 'annual_revenue') {
+    } else if (key === 'annual_revenue') {
       where.AND.push({
         OR: values.map((v) => ({ annual_revenue: { contains: v, mode: 'insensitive' } })),
       });
@@ -1297,16 +1295,18 @@ private async ApolloLead(
 
   const delegate: any = (this.prisma as any)[model];
 
-  const [data, total] = await Promise.all([
-    delegate.findMany({ where, take: limit, skip, orderBy }),
-    delegate.count({ where }),
-  ]);
+  const data = await delegate.findMany({
+    where,
+    orderBy,
+    take: limit,  // will be undefined if you want all
+    skip,         // will be undefined if you want all
+  });
+
+  let finalData = data;
 
   // ==================================
   // 🔥 Employee Range Filter
   // ==================================
-  let finalData = data;
-
   if (query.min_employee || query.max_employee) {
     const min = Number(query.min_employee) || 0;
     const max = Number(query.max_employee) || 999999;
@@ -1340,13 +1340,14 @@ private async ApolloLead(
     data: finalData,
     meta: {
       total: finalData.length,
-      page,
-      limit,
-      pages: Math.ceil(finalData.length / limit),
+      page: limit ? page : 1,
+      limit: limit || finalData.length,
+      pages: limit ? Math.ceil(finalData.length / limit) : 1,
     },
     access: 'authorized',
   };
 }
+
 
 
 // ======================old code =======================
