@@ -609,70 +609,77 @@ export class LeadDataService {
   //----------------------------- Delete start -----------------------------------------
 
   // Reusable function for all 3 lead types
-private async _executeSingleBatch(
+  private async _executeSingleBatch(
     model: any,
     startDate: Date,
     endDate: Date,
     batchSize: number,
-) {
+  ) {
     const endOfDay = new Date(endDate);
     endOfDay.setDate(endOfDay.getDate() + 1);
 
     // 1) Find IDs (limited to batchSize)
     const items = await model.findMany({
-        where: {
-            created_at: {
-                gte: startDate,
-                lt: endOfDay,
-            },
+      where: {
+        created_at: {
+          gte: startDate,
+          lt: endOfDay,
         },
-        select: { id: true },
-        take: batchSize, 
-        orderBy: { created_at: 'asc' },
+      },
+      select: { id: true },
+      take: batchSize,
+      orderBy: { created_at: 'asc' },
     });
 
     if (items.length === 0) {
-        return { count: 0 };
+      return { count: 0 };
     }
 
     const ids = items.map((i) => i.id);
 
     // 2) Delete by IDs
     return await model.deleteMany({
-        where: { id: { in: ids } },
+      where: { id: { in: ids } },
     });
-}
+  }
 
-private async deleteWithLimit(
-  model: any,
-  startDate: Date,
-  endDate: Date,
-  limit?: number, 
-) {
+  private async deleteWithLimit(
+    model: any,
+    startDate: Date,
+    endDate: Date,
+    limit?: number,
+  ) {
+    const BIND_VARIABLE_MAX_SAFE = 30000;
 
-  const BIND_VARIABLE_MAX_SAFE = 30000; 
+    const batchSize = limit ?? BIND_VARIABLE_MAX_SAFE;
 
-  const batchSize = limit ?? BIND_VARIABLE_MAX_SAFE;
-  
-
-  if (limit !== undefined) {
+    if (limit !== undefined) {
       const actualLimit = Math.min(limit, BIND_VARIABLE_MAX_SAFE);
-      
-      return await this._executeSingleBatch(model, startDate, endDate, actualLimit);
+
+      return await this._executeSingleBatch(
+        model,
+        startDate,
+        endDate,
+        actualLimit,
+      );
+    }
+
+    let totalDeleted = 0;
+    let deletedCount = batchSize;
+
+    while (deletedCount === batchSize) {
+      const result = await this._executeSingleBatch(
+        model,
+        startDate,
+        endDate,
+        batchSize,
+      );
+      deletedCount = result.count;
+      totalDeleted += deletedCount;
+    }
+
+    return { count: totalDeleted };
   }
-
-  let totalDeleted = 0;
-  let deletedCount = batchSize; 
-
-  while (deletedCount === batchSize) {
-
-    const result = await this._executeSingleBatch(model, startDate, endDate, batchSize);
-    deletedCount = result.count;
-    totalDeleted += deletedCount;
-  }
-
-  return { count: totalDeleted };
-}
 
   // ================= SALES NAVIGATOR =================
   async deleteSalesNavigatorLeadsByDateRange(
@@ -1015,886 +1022,884 @@ private async deleteWithLimit(
   async findAllApollo(query: Record<string, any>, user: any) {
     const apolloData = await this.ApolloLead('apolloLead', query, user);
 
-    return apolloData
+    return apolloData;
   }
 
+  //   private async ApolloLead(
+  //   model: 'apolloLead',
+  //   query: Record<string, any>,
+  //   user: any,
+  // ) {
+  //   // 1. Setup Pagination Parameters
+  //   const page = Number(query.page) > 0 ? Number(query.page) : 1;
+  //   const limit = Number(query.limit) > 0 ? Number(query.limit) : undefined;
+  //   const skip = limit ? (page - 1) * limit : 0; // Set skip to 0 if no limit
 
-//   private async ApolloLead(
-//   model: 'apolloLead',
-//   query: Record<string, any>,
-//   user: any,
-// ) {
-//   // 1. Setup Pagination Parameters
-//   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-//   const limit = Number(query.limit) > 0 ? Number(query.limit) : undefined;
-//   const skip = limit ? (page - 1) * limit : 0; // Set skip to 0 if no limit
+  //   // 2. Setup Database WHERE Clause
+  //   const where: any = { deleted_at: null };
+  //   where.AND = [];
 
-//   // 2. Setup Database WHERE Clause
-//   const where: any = { deleted_at: null };
-//   where.AND = [];
+  //   // 🔍 Free text search (q)
+  //   if (query.q) {
+  //     const searchTerm = String(query.q).trim();
+  //     where.AND.push({
+  //       OR: [
+  //         { first_name: { contains: searchTerm, mode: 'insensitive' } },
+  //         { last_name: { contains: searchTerm, mode: 'insensitive' } },
+  //         { title: { contains: searchTerm, mode: 'insensitive' } },
+  //         { company_name: { contains: searchTerm, mode: 'insensitive' } },
+  //         { email: { contains: searchTerm, mode: 'insensitive' } },
+  //         { city: { contains: searchTerm, mode: 'insensitive' } },
+  //         { country: { contains: searchTerm, mode: 'insensitive' } },
+  //         { industry: { contains: searchTerm, mode: 'insensitive' } },
+  //         { keywords: { contains: searchTerm, mode: 'insensitive' } },
+  //         { website: { contains: searchTerm, mode: 'insensitive' } },
+  //       ],
+  //     });
+  //   }
 
-//   // 🔍 Free text search (q)
-//   if (query.q) {
-//     const searchTerm = String(query.q).trim();
-//     where.AND.push({
-//       OR: [
-//         { first_name: { contains: searchTerm, mode: 'insensitive' } },
-//         { last_name: { contains: searchTerm, mode: 'insensitive' } },
-//         { title: { contains: searchTerm, mode: 'insensitive' } },
-//         { company_name: { contains: searchTerm, mode: 'insensitive' } },
-//         { email: { contains: searchTerm, mode: 'insensitive' } },
-//         { city: { contains: searchTerm, mode: 'insensitive' } },
-//         { country: { contains: searchTerm, mode: 'insensitive' } },
-//         { industry: { contains: searchTerm, mode: 'insensitive' } },
-//         { keywords: { contains: searchTerm, mode: 'insensitive' } },
-//         { website: { contains: searchTerm, mode: 'insensitive' } },
-//       ],
-//     });
-//   }
+  //   // 🔧 Dynamic Filters (Applies filters that can be handled by the DB)
+  //   for (const key of Object.keys(query)) {
+  //     // Skip pagination, sort, search query, and in-memory filter keys
+  //     if (['page', 'limit', 'sortBy', 'order', 'q', 'min_employee', 'max_employee', 'min_annual_revenue', 'max_annual_revenue'].includes(key))
+  //       continue;
 
-//   // 🔧 Dynamic Filters (Applies filters that can be handled by the DB)
-//   for (const key of Object.keys(query)) {
-//     // Skip pagination, sort, search query, and in-memory filter keys
-//     if (['page', 'limit', 'sortBy', 'order', 'q', 'min_employee', 'max_employee', 'min_annual_revenue', 'max_annual_revenue'].includes(key))
-//       continue;
+  //     const value = query[key];
+  //     if (!value) continue;
 
-//     const value = query[key];
-//     if (!value) continue;
+  //     let values: string[] = [];
+  //     try {
+  //       values = Array.isArray(value) ? value : JSON.parse(value);
+  //       if (!Array.isArray(values)) values = [String(value)];
+  //     } catch {
+  //       values = [String(value)];
+  //     }
 
-//     let values: string[] = [];
-//     try {
-//       values = Array.isArray(value) ? value : JSON.parse(value);
-//       if (!Array.isArray(values)) values = [String(value)];
-//     } catch {
-//       values = [String(value)];
-//     }
+  //     if (key === 'name') {
+  //       where.AND.push({
+  //         OR: values.flatMap((v) => [
+  //           { first_name: { contains: v, mode: 'insensitive' } },
+  //           { last_name: { contains: v, mode: 'insensitive' } },
+  //         ]),
+  //       });
+  //     } else if (key === 'job_titles' || key === 'job_titless') {
+  //       where.AND.push({
+  //         OR: values.map((v) => ({ title: { contains: v, mode: 'insensitive' } })),
+  //       });
+  //     } else if (key === 'keyword') {
+  //       where.AND.push({
+  //         OR: values.map((v) => ({ keywords: { contains: v, mode: 'insensitive' } })),
+  //       });
+  //     } else if (key === 'company_linkedin') {
+  //       where.AND.push({
+  //         OR: values.map((v) => ({ company_uinkedin_url: { contains: v, mode: 'insensitive' } })),
+  //       });
+  //     } else if (key === 'country') {
+  //       where.AND.push({
+  //         OR: values.map((v) => ({ country: { contains: v, mode: 'insensitive' } })),
+  //       });
+  //     } else if (key === 'city') {
+  //       where.AND.push({
+  //         OR: values.map((v) => ({ city: { contains: v, mode: 'insensitive' } })),
+  //       });
+  //     } else if (key === 'state') {
+  //       where.AND.push({
+  //         OR: values.map((v) => ({ state: { contains: v, mode: 'insensitive' } })),
+  //       });
+  //     } else if (key === 'email_status') {
+  //       where.AND.push({
+  //         OR: values.map((v) => ({ email_status: { contains: v, mode: 'insensitive' } })),
+  //       });
+  //     } else if (key === 'annual_revenue') {
+  //       where.AND.push({
+  //         OR: values.map((v) => ({ annual_revenue: { contains: v, mode: 'insensitive' } })),
+  //       });
+  //     } else if (key === 'demoed') {
+  //       where.AND.push({
+  //         OR: values.map((v) => ({ demoed: { contains: v, mode: 'insensitive' } })),
+  //       });
+  //     } else {
+  //       where.AND.push({
+  //         OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
+  //       });
+  //     }
+  //   }
 
-//     if (key === 'name') {
-//       where.AND.push({
-//         OR: values.flatMap((v) => [
-//           { first_name: { contains: v, mode: 'insensitive' } },
-//           { last_name: { contains: v, mode: 'insensitive' } },
-//         ]),
-//       });
-//     } else if (key === 'job_titles' || key === 'job_titless') {
-//       where.AND.push({
-//         OR: values.map((v) => ({ title: { contains: v, mode: 'insensitive' } })),
-//       });
-//     } else if (key === 'keyword') {
-//       where.AND.push({
-//         OR: values.map((v) => ({ keywords: { contains: v, mode: 'insensitive' } })),
-//       });
-//     } else if (key === 'company_linkedin') {
-//       where.AND.push({
-//         OR: values.map((v) => ({ company_uinkedin_url: { contains: v, mode: 'insensitive' } })),
-//       });
-//     } else if (key === 'country') {
-//       where.AND.push({
-//         OR: values.map((v) => ({ country: { contains: v, mode: 'insensitive' } })),
-//       });
-//     } else if (key === 'city') {
-//       where.AND.push({
-//         OR: values.map((v) => ({ city: { contains: v, mode: 'insensitive' } })),
-//       });
-//     } else if (key === 'state') {
-//       where.AND.push({
-//         OR: values.map((v) => ({ state: { contains: v, mode: 'insensitive' } })),
-//       });
-//     } else if (key === 'email_status') {
-//       where.AND.push({
-//         OR: values.map((v) => ({ email_status: { contains: v, mode: 'insensitive' } })),
-//       });
-//     } else if (key === 'annual_revenue') {
-//       where.AND.push({
-//         OR: values.map((v) => ({ annual_revenue: { contains: v, mode: 'insensitive' } })),
-//       });
-//     } else if (key === 'demoed') {
-//       where.AND.push({
-//         OR: values.map((v) => ({ demoed: { contains: v, mode: 'insensitive' } })),
-//       });
-//     } else {
-//       where.AND.push({
-//         OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
-//       });
-//     }
-//   }
+  //   if (where.AND.length === 0) delete where.AND;
 
-//   if (where.AND.length === 0) delete where.AND;
+  //   // 3. Setup Sorting
+  //   const sortBy = query.sortBy || 'created_at';
+  //   const order =
+  //     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+  //       ? (query.order.toLowerCase() as Prisma.SortOrder)
+  //       : Prisma.SortOrder.desc;
+  //   const orderBy = { [sortBy]: order };
 
-//   // 3. Setup Sorting
-//   const sortBy = query.sortBy || 'created_at';
-//   const order =
-//     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-//       ? (query.order.toLowerCase() as Prisma.SortOrder)
-//       : Prisma.SortOrder.desc;
-//   const orderBy = { [sortBy]: order };
+  //   const delegate: any = (this.prisma as any)[model];
 
-//   const delegate: any = (this.prisma as any)[model];
+  //   // --- START OF FIX: Fetch ALL matching data for correct total count ---
 
-//   // --- START OF FIX: Fetch ALL matching data for correct total count ---
-  
-//   // 4. Fetch all data that matches DB-compatible filters.
-//   // We intentionally remove 'take' and 'skip' here to fetch the complete set
-//   // for accurate in-memory range filtering.
-//   let data = await delegate.findMany({
-//     where,
-//     orderBy,
-//     // take: limit, // REMOVED
-//     // skip,        // REMOVED
-//   });
+  //   // 4. Fetch all data that matches DB-compatible filters.
+  //   // We intentionally remove 'take' and 'skip' here to fetch the complete set
+  //   // for accurate in-memory range filtering.
+  //   let data = await delegate.findMany({
+  //     where,
+  //     orderBy,
+  //     // take: limit, // REMOVED
+  //     // skip,        // REMOVED
+  //   });
 
-//   let finalData = data;
+  //   let finalData = data;
 
-//   // 5. Apply In-Memory Range Filters
-  
-//   // ==================================
-//   // 🔥 Employee Range Filter
-//   // ==================================
-//   if (query.min_employee || query.max_employee) {
-//     const min = Number(query.min_employee) || 0;
-//     const max = Number(query.max_employee) || 999999;
+  //   // 5. Apply In-Memory Range Filters
 
-//     finalData = finalData.filter((item) => {
-//       // Assuming 'employees' is a string like "10k-50k" or "10"
-//       if (!item.employees) return false;
-//       // Extract only digits to handle formats like "10k-50k" by taking the first number,
-//       // which is acceptable for a simple range comparison
-//       const numMatch = String(item.employees).match(/\d+/); 
-//       const num = numMatch ? Number(numMatch[0]) : NaN; 
-      
-//       if (isNaN(num)) return false;
-//       return num >= min && num <= max;
-//     });
-//   }
+  //   // ==================================
+  //   // 🔥 Employee Range Filter
+  //   // ==================================
+  //   if (query.min_employee || query.max_employee) {
+  //     const min = Number(query.min_employee) || 0;
+  //     const max = Number(query.max_employee) || 999999;
 
-//   // ==================================
-//   // 🔥 Annual Revenue Range Filter
-//   // ==================================
-//   if (query.min_annual_revenue || query.max_annual_revenue) {
-//     const minR = Number(query.min_annual_revenue) || 0;
-//     const maxR = Number(query.max_annual_revenue) || 9999999;
+  //     finalData = finalData.filter((item) => {
+  //       // Assuming 'employees' is a string like "10k-50k" or "10"
+  //       if (!item.employees) return false;
+  //       // Extract only digits to handle formats like "10k-50k" by taking the first number,
+  //       // which is acceptable for a simple range comparison
+  //       const numMatch = String(item.employees).match(/\d+/);
+  //       const num = numMatch ? Number(numMatch[0]) : NaN;
 
-//     finalData = finalData.filter((item) => {
-//       // Assuming 'annual_revenue' is a string
-//       if (!item.annual_revenue) return false;
-//       const numMatch = String(item.annual_revenue).match(/\d+/);
-//       const num = numMatch ? Number(numMatch[0]) : NaN;
+  //       if (isNaN(num)) return false;
+  //       return num >= min && num <= max;
+  //     });
+  //   }
 
-//       if (isNaN(num)) return false;
-//       return num >= minR && num <= maxR;
-//     });
-//   }
-  
-//   // 6. Calculate Total Count and Manually Paginate
-//   const totalCount = finalData.length;
+  //   // ==================================
+  //   // 🔥 Annual Revenue Range Filter
+  //   // ==================================
+  //   if (query.min_annual_revenue || query.max_annual_revenue) {
+  //     const minR = Number(query.min_annual_revenue) || 0;
+  //     const maxR = Number(query.max_annual_revenue) || 9999999;
 
-//   if (limit) {
-//     // Slice the full filtered array to get only the current page's data
-//     finalData = finalData.slice(skip, skip + limit); 
-//   }
+  //     finalData = finalData.filter((item) => {
+  //       // Assuming 'annual_revenue' is a string
+  //       if (!item.annual_revenue) return false;
+  //       const numMatch = String(item.annual_revenue).match(/\d+/);
+  //       const num = numMatch ? Number(numMatch[0]) : NaN;
 
-//   // --- END OF FIX ---
+  //       if (isNaN(num)) return false;
+  //       return num >= minR && num <= maxR;
+  //     });
+  //   }
 
-//   return {
-//     success: true,
-//     message: 'Data fetched successfully',
-//     data: finalData, // This is the paginated data (max 'limit' items)
-//     meta: {
-//       total: totalCount, // This is the corrected total count across ALL pages
-//       page: limit ? page : 1,
-//       limit: limit || totalCount,
-//       pages: limit ? Math.ceil(totalCount / limit) : 1,
-//     },
-//     access: 'authorized',
-//   };
-// }
+  //   // 6. Calculate Total Count and Manually Paginate
+  //   const totalCount = finalData.length;
 
-// private async ApolloLead(
-//   model: 'apolloLead',
-//   query: Record<string, any>,
-//   user: any,
-// ) {
-//   // 🔹 Pagination setup
-//   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-//   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20; // default 20
-//   const skip = (page - 1) * limit;
+  //   if (limit) {
+  //     // Slice the full filtered array to get only the current page's data
+  //     finalData = finalData.slice(skip, skip + limit);
+  //   }
 
-//   const where: any = { deleted_at: null };
-//   where.AND = [];
+  //   // --- END OF FIX ---
 
-//   // 🔹 Free text search (q)
-//   if (query.q) {
-//     const searchTerm = String(query.q).trim();
-//     where.AND.push({
-//       OR: [
-//         { first_name: { contains: searchTerm, mode: 'insensitive' } },
-//         { last_name: { contains: searchTerm, mode: 'insensitive' } },
-//         { title: { contains: searchTerm, mode: 'insensitive' } },
-//         { company_name: { contains: searchTerm, mode: 'insensitive' } },
-//         { email: { contains: searchTerm, mode: 'insensitive' } },
-//         { city: { contains: searchTerm, mode: 'insensitive' } },
-//         { country: { contains: searchTerm, mode: 'insensitive' } },
-//         { industry: { contains: searchTerm, mode: 'insensitive' } },
-//         { keywords: { contains: searchTerm, mode: 'insensitive' } },
-//         { website: { contains: searchTerm, mode: 'insensitive' } },
-//         { location: { contains: searchTerm, mode: 'insensitive' } },
-//       ],
-//     });
-//   }
+  //   return {
+  //     success: true,
+  //     message: 'Data fetched successfully',
+  //     data: finalData, // This is the paginated data (max 'limit' items)
+  //     meta: {
+  //       total: totalCount, // This is the corrected total count across ALL pages
+  //       page: limit ? page : 1,
+  //       limit: limit || totalCount,
+  //       pages: limit ? Math.ceil(totalCount / limit) : 1,
+  //     },
+  //     access: 'authorized',
+  //   };
+  // }
 
-//   // 🔹 Dynamic filters (Non-range filters applied to DB query)
-//   for (const key of Object.keys(query)) {
-//     if (
-//       [
-//         'page',
-//         'limit',
-//         'sortBy',
-//         'order',
-//         'q',
-//         'min_employee',
-//         'max_employee',
-//         'min_annual_revenue',
-//         'max_annual_revenue',
-//       ].includes(key)
-//     )
-//       continue;
+  // private async ApolloLead(
+  //   model: 'apolloLead',
+  //   query: Record<string, any>,
+  //   user: any,
+  // ) {
+  //   // 🔹 Pagination setup
+  //   const page = Number(query.page) > 0 ? Number(query.page) : 1;
+  //   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20; // default 20
+  //   const skip = (page - 1) * limit;
 
-//     const value = query[key];
-//     if (!value) continue;
+  //   const where: any = { deleted_at: null };
+  //   where.AND = [];
 
-//     let values: string[] = [];
-//     try {
-//       values = Array.isArray(value) ? value : JSON.parse(value);
-//       if (!Array.isArray(values)) values = [String(value)];
-//     } catch {
-//       values = [String(value)];
-//     }
+  //   // 🔹 Free text search (q)
+  //   if (query.q) {
+  //     const searchTerm = String(query.q).trim();
+  //     where.AND.push({
+  //       OR: [
+  //         { first_name: { contains: searchTerm, mode: 'insensitive' } },
+  //         { last_name: { contains: searchTerm, mode: 'insensitive' } },
+  //         { title: { contains: searchTerm, mode: 'insensitive' } },
+  //         { company_name: { contains: searchTerm, mode: 'insensitive' } },
+  //         { email: { contains: searchTerm, mode: 'insensitive' } },
+  //         { city: { contains: searchTerm, mode: 'insensitive' } },
+  //         { country: { contains: searchTerm, mode: 'insensitive' } },
+  //         { industry: { contains: searchTerm, mode: 'insensitive' } },
+  //         { keywords: { contains: searchTerm, mode: 'insensitive' } },
+  //         { website: { contains: searchTerm, mode: 'insensitive' } },
+  //         { location: { contains: searchTerm, mode: 'insensitive' } },
+  //       ],
+  //     });
+  //   }
 
-//     switch (key) {
-//       case 'name':
-//         where.AND.push({
-//           OR: values.flatMap((v) => [
-//             { first_name: { contains: v, mode: 'insensitive' } },
-//             { last_name: { contains: v, mode: 'insensitive' } },
-//           ]),
-//         });
-//         break;
-//       case 'job_titles':
-//       case 'job_titless':
-//         where.AND.push({
-//           OR: values.map((v) => ({ title: { contains: v, mode: 'insensitive' } })),
-//         });
-//         break;
-//       case 'keyword':
-//         where.AND.push({
-//           OR: values.map((v) => ({ keywords: { contains: v, mode: 'insensitive' } })),
-//         });
-//         break;
-//       case 'company_linkedin':
-//         where.AND.push({
-//           OR: values.map((v) => ({ company_uinkedin_url: { contains: v, mode: 'insensitive' } })),
-//         });
-//         break;
-//       case 'country':
-//       case 'city':
-//       case 'state':
-//       case 'email_status':
-//       case 'demoed':
-//         where.AND.push({
-//           OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
-//         });
-//         break;
-//       default:
-//         where.AND.push({
-//           OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
-//         });
-//     }
-//   }
+  //   // 🔹 Dynamic filters (Non-range filters applied to DB query)
+  //   for (const key of Object.keys(query)) {
+  //     if (
+  //       [
+  //         'page',
+  //         'limit',
+  //         'sortBy',
+  //         'order',
+  //         'q',
+  //         'min_employee',
+  //         'max_employee',
+  //         'min_annual_revenue',
+  //         'max_annual_revenue',
+  //       ].includes(key)
+  //     )
+  //       continue;
 
-//   if (where.AND.length === 0) delete where.AND;
+  //     const value = query[key];
+  //     if (!value) continue;
 
-//   const sortBy = query.sortBy || 'created_at';
-//   const order =
-//     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-//       ? (query.order.toLowerCase() as Prisma.SortOrder)
-//       : Prisma.SortOrder.desc;
-//   const orderBy = { [sortBy]: order };
+  //     let values: string[] = [];
+  //     try {
+  //       values = Array.isArray(value) ? value : JSON.parse(value);
+  //       if (!Array.isArray(values)) values = [String(value)];
+  //     } catch {
+  //       values = [String(value)];
+  //     }
 
-//   const delegate: any = (this.prisma as any)[model];
+  //     switch (key) {
+  //       case 'name':
+  //         where.AND.push({
+  //           OR: values.flatMap((v) => [
+  //             { first_name: { contains: v, mode: 'insensitive' } },
+  //             { last_name: { contains: v, mode: 'insensitive' } },
+  //           ]),
+  //         });
+  //         break;
+  //       case 'job_titles':
+  //       case 'job_titless':
+  //         where.AND.push({
+  //           OR: values.map((v) => ({ title: { contains: v, mode: 'insensitive' } })),
+  //         });
+  //         break;
+  //       case 'keyword':
+  //         where.AND.push({
+  //           OR: values.map((v) => ({ keywords: { contains: v, mode: 'insensitive' } })),
+  //         });
+  //         break;
+  //       case 'company_linkedin':
+  //         where.AND.push({
+  //           OR: values.map((v) => ({ company_uinkedin_url: { contains: v, mode: 'insensitive' } })),
+  //         });
+  //         break;
+  //       case 'country':
+  //       case 'city':
+  //       case 'state':
+  //       case 'email_status':
+  //       case 'demoed':
+  //         where.AND.push({
+  //           OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
+  //         });
+  //         break;
+  //       default:
+  //         where.AND.push({
+  //           OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
+  //         });
+  //     }
+  //   }
 
-//   // --- 🎯 FIX START: Fetch ALL data matching DB filters first ---
-  
-//   // Fetch all leads from the DB that match the DB-based 'where' filters
-//   const allData = await delegate.findMany({ where, orderBy });
+  //   if (where.AND.length === 0) delete where.AND;
 
-//   let allFilteredData = allData;
+  //   const sortBy = query.sortBy || 'created_at';
+  //   const order =
+  //     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+  //       ? (query.order.toLowerCase() as Prisma.SortOrder)
+  //       : Prisma.SortOrder.desc;
+  //   const orderBy = { [sortBy]: order };
 
-//   // 🔹 Employee range filter (APPLIED IN MEMORY to calculate TRUE total)
-//   if (query.min_employee || query.max_employee) {
-//     const min = Number(query.min_employee) || 0;
-//     const max = Number(query.max_employee) || 999999;
-//     allFilteredData = allFilteredData.filter((item) => {
-//       if (!item.employees) return false;
-//       // Removes non-digit characters to parse the number
-//       const num = Number(item.employees.replace(/\D/g, '')); 
-//       return !isNaN(num) && num >= min && num <= max;
-//     });
-//   }
+  //   const delegate: any = (this.prisma as any)[model];
 
-//   // 🔹 Annual revenue range filter (APPLIED IN MEMORY to calculate TRUE total)
-//   if (query.min_annual_revenue || query.max_annual_revenue) {
-//     const minR = Number(query.min_annual_revenue) || 0;
-//     const maxR = Number(query.max_annual_revenue) || 99999999;
-//     allFilteredData = allFilteredData.filter((item) => {
-//       if (!item.annual_revenue) return false;
-//       // Removes non-digit characters to parse the number
-//       const num = Number(item.annual_revenue.replace(/\D/g, ''));
-//       return !isNaN(num) && num >= minR && num <= maxR;
-//     });
-//   }
-  
-//   // 🏆 Calculate the Correct Total
-//   const newTotal = allFilteredData.length;
+  //   // --- 🎯 FIX START: Fetch ALL data matching DB filters first ---
 
-//   // 🔹 Apply Pagination to the fully filtered data
-//   const paginatedData = allFilteredData.slice(skip, skip + limit);
+  //   // Fetch all leads from the DB that match the DB-based 'where' filters
+  //   const allData = await delegate.findMany({ where, orderBy });
 
-//   // --- FIX END ---
+  //   let allFilteredData = allData;
 
-//   // 🔹 Final return structure
-//   return {
-//     success: true,
-//     message: 'Data fetched successfully',
-//     data: paginatedData, // Use the correctly paginated and filtered data
-//     meta: {
-//       total: newTotal, // Use the correct total count of all filtered items
-//       page,
-//       limit,
-//       pages: Math.ceil(newTotal / limit), // Pages calculated on the correct total
-//     },
-//     access: 'authorized',
-//   };
-// }
+  //   // 🔹 Employee range filter (APPLIED IN MEMORY to calculate TRUE total)
+  //   if (query.min_employee || query.max_employee) {
+  //     const min = Number(query.min_employee) || 0;
+  //     const max = Number(query.max_employee) || 999999;
+  //     allFilteredData = allFilteredData.filter((item) => {
+  //       if (!item.employees) return false;
+  //       // Removes non-digit characters to parse the number
+  //       const num = Number(item.employees.replace(/\D/g, ''));
+  //       return !isNaN(num) && num >= min && num <= max;
+  //     });
+  //   }
 
-private async ApolloLead(
-  model: 'apolloLead',
-  query: Record<string, any>,
-  user: any,
-) {
-  // 🔹 Pagination setup
-  const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  const limit = Number(query.limit) > 0 ? Number(query.limit) : 20; // default 20
-  const skip = (page - 1) * limit;
+  //   // 🔹 Annual revenue range filter (APPLIED IN MEMORY to calculate TRUE total)
+  //   if (query.min_annual_revenue || query.max_annual_revenue) {
+  //     const minR = Number(query.min_annual_revenue) || 0;
+  //     const maxR = Number(query.max_annual_revenue) || 99999999;
+  //     allFilteredData = allFilteredData.filter((item) => {
+  //       if (!item.annual_revenue) return false;
+  //       // Removes non-digit characters to parse the number
+  //       const num = Number(item.annual_revenue.replace(/\D/g, ''));
+  //       return !isNaN(num) && num >= minR && num <= maxR;
+  //     });
+  //   }
 
-  const where: any = { deleted_at: null };
-  where.AND = [];
+  //   // 🏆 Calculate the Correct Total
+  //   const newTotal = allFilteredData.length;
 
-  // ... (Free text search (q) and Dynamic filters setup remains the same) ...
+  //   // 🔹 Apply Pagination to the fully filtered data
+  //   const paginatedData = allFilteredData.slice(skip, skip + limit);
 
-  // 🔹 Dynamic filters (Non-range filters applied to DB query)
-  for (const key of Object.keys(query)) {
-    if (
-      [
-        'page',
-        'limit',
-        'sortBy',
-        'order',
-        'q',
-        'min_employee',
-        'max_employee',
-        'min_annual_revenue',
-        'max_annual_revenue',
-      ].includes(key)
-    )
-      continue;
+  //   // --- FIX END ---
 
-    const value = query[key];
-    if (!value) continue;
+  //   // 🔹 Final return structure
+  //   return {
+  //     success: true,
+  //     message: 'Data fetched successfully',
+  //     data: paginatedData, // Use the correctly paginated and filtered data
+  //     meta: {
+  //       total: newTotal, // Use the correct total count of all filtered items
+  //       page,
+  //       limit,
+  //       pages: Math.ceil(newTotal / limit), // Pages calculated on the correct total
+  //     },
+  //     access: 'authorized',
+  //   };
+  // }
 
-    let values: string[] = [];
-    try {
-      values = Array.isArray(value) ? value : JSON.parse(value);
-      if (!Array.isArray(values)) values = [String(value)];
-    } catch {
-      values = [String(value)];
+  private async ApolloLead(
+    model: 'apolloLead',
+    query: Record<string, any>,
+    user: any,
+  ) {
+    // 🔹 Pagination setup
+    const page = Number(query.page) > 0 ? Number(query.page) : 1;
+    const limit = Number(query.limit) > 0 ? Number(query.limit) : 20; // default 20
+    const skip = (page - 1) * limit;
+
+    const where: any = { deleted_at: null };
+    where.AND = [];
+
+    // ... (Free text search (q) and Dynamic filters setup remains the same) ...
+
+    // 🔹 Dynamic filters (Non-range filters applied to DB query)
+    for (const key of Object.keys(query)) {
+      if (
+        [
+          'page',
+          'limit',
+          'sortBy',
+          'order',
+          'q',
+          'min_employee',
+          'max_employee',
+          'min_annual_revenue',
+          'max_annual_revenue',
+        ].includes(key)
+      )
+        continue;
+
+      const value = query[key];
+      if (!value) continue;
+
+      let values: string[] = [];
+      try {
+        values = Array.isArray(value) ? value : JSON.parse(value);
+        if (!Array.isArray(values)) values = [String(value)];
+      } catch {
+        values = [String(value)];
+      }
+
+      switch (key) {
+        case 'name':
+          where.AND.push({
+            OR: values.flatMap((v) => [
+              { first_name: { contains: v, mode: 'insensitive' } },
+              { last_name: { contains: v, mode: 'insensitive' } },
+            ]),
+          });
+          break;
+        case 'job_titles':
+        case 'job_titless':
+          where.AND.push({
+            OR: values.map((v) => ({
+              title: { contains: v, mode: 'insensitive' },
+            })),
+          });
+          break;
+        case 'keyword':
+          where.AND.push({
+            OR: values.map((v) => ({
+              keywords: { contains: v, mode: 'insensitive' },
+            })),
+          });
+          break;
+        case 'company_linkedin':
+          where.AND.push({
+            OR: values.map((v) => ({
+              company_uinkedin_url: { contains: v, mode: 'insensitive' },
+            })),
+          });
+          break;
+        case 'country':
+        case 'city':
+        case 'state':
+        case 'email_status':
+        case 'demoed':
+          where.AND.push({
+            OR: values.map((v) => ({
+              [key]: { contains: v, mode: 'insensitive' },
+            })),
+          });
+          break;
+        default:
+          where.AND.push({
+            OR: values.map((v) => ({
+              [key]: { contains: v, mode: 'insensitive' },
+            })),
+          });
+      }
     }
 
-    switch (key) {
-      case 'name':
-        where.AND.push({
-          OR: values.flatMap((v) => [
-            { first_name: { contains: v, mode: 'insensitive' } },
-            { last_name: { contains: v, mode: 'insensitive' } },
-          ]),
-        });
-        break;
-      case 'job_titles':
-      case 'job_titless':
-        where.AND.push({
-          OR: values.map((v) => ({ title: { contains: v, mode: 'insensitive' } })),
-        });
-        break;
-      case 'keyword':
-        where.AND.push({
-          OR: values.map((v) => ({ keywords: { contains: v, mode: 'insensitive' } })),
-        });
-        break;
-      case 'company_linkedin':
-        where.AND.push({
-          OR: values.map((v) => ({ company_uinkedin_url: { contains: v, mode: 'insensitive' } })),
-        });
-        break;
-      case 'country':
-      case 'city':
-      case 'state':
-      case 'email_status':
-      case 'demoed':
-        where.AND.push({
-          OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
-        });
-        break;
-      default:
-        where.AND.push({
-          OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
-        });
+    if (where.AND.length === 0) delete where.AND;
+
+    const sortBy = query.sortBy || 'created_at';
+    const order =
+      query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+        ? (query.order.toLowerCase() as Prisma.SortOrder)
+        : 'desc'; // Use 'desc' as string if Prisma type is unavailable
+    const orderBy = { [sortBy]: order };
+
+    const delegate: any = (this.prisma as any)[model];
+
+    // --- 🚀 Range Filters Fix START ---
+    const finalWhere: any = { ...where };
+    if (!finalWhere.AND) finalWhere.AND = [];
+
+    // Employee range filter (works for numeric or string DB field)
+    const minEmp = Number(query.min_employee);
+    const maxEmp = Number(query.max_employee);
+    if (!isNaN(minEmp) || !isNaN(maxEmp)) {
+      const empClause: any = {};
+      if (!isNaN(minEmp)) empClause.gte = minEmp;
+      if (!isNaN(maxEmp)) empClause.lte = maxEmp;
+
+      finalWhere.AND.push({
+        OR: [
+          { employees: empClause }, // numeric field
+          { employees: { gte: minEmp.toString(), lte: maxEmp.toString() } }, // string field
+        ],
+      });
     }
+
+    // Annual revenue range filter (works for numeric or string DB field)
+    const minRev = Number(query.min_annual_revenue);
+    const maxRev = Number(query.max_annual_revenue);
+    if (!isNaN(minRev) || !isNaN(maxRev)) {
+      const revClause: any = {};
+      if (!isNaN(minRev)) revClause.gte = minRev;
+      if (!isNaN(maxRev)) revClause.lte = maxRev;
+
+      finalWhere.AND.push({
+        OR: [
+          { annual_revenue: revClause }, // numeric field
+          {
+            annual_revenue: { gte: minRev.toString(), lte: maxRev.toString() },
+          }, // string field
+        ],
+      });
+    }
+
+    if (finalWhere.AND.length === 0) delete finalWhere.AND;
+    // 3. Fetch the total count using the complete filter (efficient COUNT query)
+    const newTotal = await delegate.count({ where: finalWhere });
+
+    // 4. Fetch ONLY the necessary page of data (efficient SELECT with LIMIT/OFFSET)
+    const paginatedData = await delegate.findMany({
+      where: finalWhere, // Complete DB filters applied
+      orderBy,
+      skip, // Database skips (pages)
+      take: limit, // Database limits (records per page)
+    });
+
+    // --- পারফরম্যান্স FIX END ---
+
+    // 🔹 Final return structure
+    return {
+      success: true,
+      message: 'Data fetched successfully',
+      data: paginatedData, // Use the correctly paginated and filtered data
+      meta: {
+        total: newTotal, // Use the correct total count from the DB
+        page,
+        limit,
+        pages: Math.ceil(newTotal / limit), // Pages calculated on the correct total
+      },
+      access: 'authorized',
+    };
   }
 
-  if (where.AND.length === 0) delete where.AND;
-
-  const sortBy = query.sortBy || 'created_at';
-  const order =
-    query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-      ? (query.order.toLowerCase() as Prisma.SortOrder)
-      : 'desc'; // Use 'desc' as string if Prisma type is unavailable
-  const orderBy = { [sortBy]: order };
-
-  const delegate: any = (this.prisma as any)[model];
-
-  // --- 🚀 পারফরম্যান্স FIX START ---
-  
-  // সম্পূর্ণ ফিল্টারিংয়ের জন্য নতুন WHERE অবজেক্ট তৈরি করা হচ্ছে 
-  const finalWhere: any = { ...where };
-  if (!finalWhere.AND) finalWhere.AND = [];
-  
-  // 1. Employee range filter (APPLIED TO DB QUERY)
-  if (query.min_employee || query.max_employee) {
-    const min = Number(query.min_employee);
-    const max = Number(query.max_employee);
-    
-    // assuming 'employees' is a numeric field in the database
-    const employeesClause: any = {};
-    if (!isNaN(min) && min > 0) employeesClause.gte = min;
-    if (!isNaN(max) && max > 0) employeesClause.lte = max;
-    
-    if (Object.keys(employeesClause).length > 0) {
-      finalWhere.AND.push({ employees: employeesClause });
-    }
-  }
-
-  // 2. Annual revenue range filter (APPLIED TO DB QUERY)
-  if (query.min_annual_revenue || query.max_annual_revenue) {
-    const minR = Number(query.min_annual_revenue);
-    const maxR = Number(query.max_annual_revenue);
-    
-    // assuming 'annual_revenue' is a numeric field in the database
-    const revenueClause: any = {};
-    if (!isNaN(minR) && minR > 0) revenueClause.gte = minR;
-    if (!isNaN(maxR) && maxR > 0) revenueClause.lte = maxR;
-    
-    if (Object.keys(revenueClause).length > 0) {
-      finalWhere.AND.push({ annual_revenue: revenueClause });
-    }
-  }
-
-  // Remove empty AND if no filters applied
-  if (finalWhere.AND.length === 0) delete finalWhere.AND;
-
-  // 3. Fetch the total count using the complete filter (efficient COUNT query)
-  const newTotal = await delegate.count({ where: finalWhere });
-
-  // 4. Fetch ONLY the necessary page of data (efficient SELECT with LIMIT/OFFSET)
-  const paginatedData = await delegate.findMany({
-    where: finalWhere, // Complete DB filters applied
-    orderBy,
-    skip, // Database skips (pages)
-    take: limit, // Database limits (records per page)
-  });
-
-  // --- পারফরম্যান্স FIX END ---
-
-  // 🔹 Final return structure
-  return {
-    success: true,
-    message: 'Data fetched successfully',
-    data: paginatedData, // Use the correctly paginated and filtered data
-    meta: {
-      total: newTotal, // Use the correct total count from the DB
-      page,
-      limit,
-      pages: Math.ceil(newTotal / limit), // Pages calculated on the correct total
-    },
-    access: 'authorized',
-  };
-}
-
-
-
-
-
-// ======================old code =======================
-
-// private async ApolloLead(
-//   model: 'apolloLead',
-//   query: Record<string, any>,
-//   user: any,
-// ) {
-//   // Pagination
-//   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-//   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
-//   const skip = (page - 1) * limit;
-
-//   const where: any = { deleted_at: null, AND: [] };
-
-//   // SAFE JSON PARSE FUNCTION
-//   const safeToArray = (value: any): string[] => {
-//     if (value === null || value === undefined) return [];
-
-//     // Already array
-//     if (Array.isArray(value)) {
-//       return value.map((v) => String(v ?? '')).filter((v) => v.length > 0);
-//     }
-
-//     // Try parsing JSON
-//     try {
-//       const parsed = JSON.parse(value);
-//       if (Array.isArray(parsed)) {
-//         return parsed.map((v) => String(v ?? '')).filter((v) => v.length > 0);
-//       }
-//       return [String(parsed ?? '')];
-//     } catch {
-//       return [String(value ?? '')];
-//     }
-//   };
-
-//   // ========== FREE TEXT SEARCH ==========
-//   if (query.q) {
-//     const searchTerm = String(query.q || '').trim();
-//     if (searchTerm.length > 0) {
-//       where.AND.push({
-//         OR: [
-//           { first_name: { contains: searchTerm, mode: 'insensitive' } },
-//           { last_name: { contains: searchTerm, mode: 'insensitive' } },
-//           { title: { contains: searchTerm, mode: 'insensitive' } },
-//           { company_name: { contains: searchTerm, mode: 'insensitive' } },
-//           { email: { contains: searchTerm, mode: 'insensitive' } },
-//           { city: { contains: searchTerm, mode: 'insensitive' } },
-//           { country: { contains: searchTerm, mode: 'insensitive' } },
-//           { industry: { contains: searchTerm, mode: 'insensitive' } },
-//           { keywords: { contains: searchTerm, mode: 'insensitive' } },
-//           { website: { contains: searchTerm, mode: 'insensitive' } },
-//           { location: { contains: searchTerm, mode: 'insensitive' } },
-//         ],
-//       });
-//     }
-//   }
-
-//   // ========== DYNAMIC FILTERS ==========
-//   for (const key of Object.keys(query)) {
-//     if (
-//       [
-//         'page',
-//         'limit',
-//         'sortBy',
-//         'order',
-//         'q',
-//         'min_employee',
-//         'max_employee',
-//         'min_annual_revenue',
-//         'max_annual_revenue',
-//       ].includes(key)
-//     )
-//       continue;
-
-//     const rawValue = query[key];
-//     if (!rawValue) continue;
-
-//     const values = safeToArray(rawValue);
-//     if (values.length === 0) continue;
-
-//     switch (key) {
-//       case 'name':
-//         where.AND.push({
-//           OR: values.flatMap((v) => [
-//             { first_name: { contains: String(v), mode: 'insensitive' } },
-//             { last_name: { contains: String(v), mode: 'insensitive' } },
-//           ]),
-//         });
-//         break;
-
-//       case 'job_titles':
-//       case 'job_titless':
-//         where.AND.push({
-//           OR: values.map((v) => ({
-//             title: { contains: String(v), mode: 'insensitive' },
-//           })),
-//         });
-//         break;
-
-//       case 'keyword':
-//         where.AND.push({
-//           OR: values.map((v) => ({
-//             keywords: { contains: String(v), mode: 'insensitive' },
-//           })),
-//         });
-//         break;
-
-//       case 'company_linkedin':
-//         where.AND.push({
-//           OR: values.map((v) => ({
-//             company_uinkedin_url: { contains: String(v), mode: 'insensitive' },
-//           })),
-//         });
-//         break;
-
-//       default:
-//         where.AND.push({
-//           OR: values.map((v) => ({
-//             [key]: { contains: String(v), mode: 'insensitive' },
-//           })),
-//         });
-//     }
-//   }
-
-//   if (where.AND.length === 0) delete where.AND;
-
-//   // Sort + order
-//   const sortBy = query.sortBy || 'created_at';
-//   const order =
-//     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-//       ? (query.order.toLowerCase() as Prisma.SortOrder)
-//       : Prisma.SortOrder.desc;
-
-//   const orderBy = { [sortBy]: order };
-
-//   const delegate: any = (this.prisma as any)[model];
-
-//   // ========== DB FILTERS (SAFE) ==========
-//   const allData = await delegate.findMany({
-//     where,
-//     orderBy,
-//   });
-
-//   let allFilteredData = [...allData];
-
-//   // ========= EMPLOYEE RANGE FILTER ==========
-//   if (query.min_employee || query.max_employee) {
-//     const min = Number(query.min_employee) || 0;
-//     const max = Number(query.max_employee) || 999999;
-
-//     allFilteredData = allFilteredData.filter((item) => {
-//       const emp = item.employees;
-//       if (!emp || typeof emp !== 'string') return false;
-//       const num = Number(emp.replace(/\D/g, '')) || 0;
-//       return num >= min && num <= max;
-//     });
-//   }
-
-//   // ========= ANNUAL REVENUE FILTER ==========
-//   if (query.min_annual_revenue || query.max_annual_revenue) {
-//     const min = Number(query.min_annual_revenue) || 0;
-//     const max = Number(query.max_annual_revenue) || 999999999;
-
-//     allFilteredData = allFilteredData.filter((item) => {
-//       const rev = item.annual_revenue;
-//       if (!rev || typeof rev !== 'string') return false;
-//       const num = Number(rev.replace(/\D/g, '')) || 0;
-//       return num >= min && num <= max;
-//     });
-//   }
-
-//   // Total Count
-//   const newTotal = allFilteredData.length;
-
-//   // Pagination
-//   const paginatedData = allFilteredData.slice(skip, skip + limit);
-
-//   return {
-//     success: true,
-//     message: 'Data fetched successfully',
-//     data: paginatedData,
-//     meta: {
-//       total: newTotal,
-//       page,
-//       limit,
-//       pages: Math.ceil(newTotal / limit),
-//     },
-//     access: 'authorized',
-//   };
-// }
-
-
-
-// private async ApolloLead(
-//   model: 'apolloLead',
-//   query: Record<string, any>,
-//   user: any,
-// ) {
-//   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-//   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
-//   const skip = (page - 1) * limit;
-
-//   const where: any = { deleted_at: null, AND: [] };
-
-//   // List of Date fields → never apply contains
-//   const dateFields = ['created_at', 'updated_at', 'deleted_at'];
-
-//   // All String fields from ApolloLead model
-//   const stringFields = [
-//     "first_name","last_name","title","company_name","company_name_for_emails",
-//     "email","email_status","primary_email_source",
-//     "primary_email_verification_source","email_confidence",
-//     "primary_email_catch_all_status","primary_email_last_verified_at",
-//     "seniority","departments","contact_owner","work_direct_phone",
-//     "home_phone","mobile_phone","corporate_phone","other_phone","stage",
-//     "lists","last_contacted","account_owner","employees","industry",
-//     "keywords","person_linkedin_url","website","company_uinkedin_url",
-//     "facebook_url","twitter_url","city","state","country","company_address",
-//     "company_city","company_state","company_country","company_phone",
-//     "technologies","annual_revenue","total_funding","latest_funding",
-//     "latest_funding_amount","last_raised_at","subsidiary_of","email_sent",
-//     "email_open","email_bounced","replied","demoed",
-//     "number_of_retail_locations","apollo_contact_id","apollo_account_id",
-//     "secondary_email","secondary_email_source","secondary_email_status",
-//     "secondary_email_verification_source","tertiary_email",
-//     "tertiary_email_source","tertiary_email_status",
-//     "tertiary_email_verification_source"
-//   ];
-
-//   // SAFE JSON PARSER
-//   const safeToArray = (value: any) => {
-//     if (!value) return [];
-//     if (Array.isArray(value)) return value;
-//     try {
-//       const p = JSON.parse(value);
-//       return Array.isArray(p) ? p : [p];
-//     } catch {
-//       return [value];
-//     }
-//   };
-
-//   // FREE TEXT SEARCH
-//   if (query.q) {
-//     const q = query.q.trim();
-//     if (q.length > 0) {
-//       const orFilters = stringFields.map(f => ({
-//         [f]: { contains: q, mode: 'insensitive' }
-//       }));
-//       where.AND.push({ OR: orFilters });
-//     }
-//   }
-
-//   // DYNAMIC FILTERS
-//   for (const key of Object.keys(query)) {
-//     if (['page','limit','sortBy','order','q','min_employee','max_employee','min_annual_revenue','max_annual_revenue'].includes(key))
-//       continue;
-
-//     const raw = query[key];
-//     if (!raw) continue;
-
-//     // Skip Date fields
-//     if (dateFields.includes(key)) continue;
-
-//     // Skip unknown fields
-//     if (!stringFields.includes(key)) continue;
-
-//     const values = safeToArray(raw);
-
-//     where.AND.push({
-//       OR: values.map(v => ({
-//         [key]: { contains: String(v), mode: 'insensitive' }
-//       }))
-//     });
-//   }
-
-//   if (where.AND.length === 0) delete where.AND;
-
-//   // SORT
-//   const sortBy = query.sortBy || "created_at";
-//   const order = ['asc','desc'].includes((query.order || '').toLowerCase())
-//     ? query.order.toLowerCase()
-//     : 'desc';
-//   const orderBy = { [sortBy]: order };
-
-//   const delegate: any = (prisma as any)[model];
-
-//   // ================== SAFE FETCH ==================
-//   // Wrap in try-catch to handle corrupted UTF-8
-//   let allData: any[] = [];
-//   try {
-//     allData = await delegate.findMany({
-//       where,
-//       orderBy,
-//     });
-//   } catch (err) {
-//     console.error("Prisma fetch failed due to invalid UTF-8. Attempting fallback...");
-    
-//     // Fallback: fetch raw rows and sanitize
-//     const rawRows: any[] = await prisma.$queryRawUnsafe(`
-//       SELECT *
-//       FROM "ApolloLead"
-//       WHERE deleted_at IS NULL
-//       ORDER BY "${sortBy}" ${order.toUpperCase()}
-//     `);
-
-//     // Sanitize strings
-//     allData = rawRows.map(row => {
-//       for (const key of stringFields) {
-//         if (row[key] && typeof row[key] === 'string') {
-//           // Remove invalid UTF-8 / NULL bytes
-//           row[key] = row[key].replace(/[\0-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
-//         }
-//       }
-//       return row;
-//     });
-//   }
-
-//   // EMPLOYEE FILTER
-//   if (query.min_employee || query.max_employee) {
-//     const min = Number(query.min_employee) || 0;
-//     const max = Number(query.max_employee) || 999999;
-//     allData = allData.filter(item => {
-//       const num = Number((item.employees || "").replace(/\D/g, "")) || 0;
-//       return num >= min && num <= max;
-//     });
-//   }
-
-//   // ANNUAL REVENUE FILTER
-//   if (query.min_annual_revenue || query.max_annual_revenue) {
-//     const min = Number(query.min_annual_revenue) || 0;
-//     const max = Number(query.max_annual_revenue) || 999999999;
-//     allData = allData.filter(item => {
-//       const num = Number((item.annual_revenue || "").replace(/\D/g, "")) || 0;
-//       return num >= min && num <= max;
-//     });
-//   }
-
-//   const total = allData.length;
-//   const data = allData.slice(skip, skip + limit);
-
-//   return {
-//     success: true,
-//     message: "Data fetched successfully",
-//     data,
-//     meta: { total, page, limit, pages: Math.ceil(total / limit) },
-//     access: "authorized",
-//   };
-// }
-
-
-
-
-
+  // ======================old code =======================
+
+  // private async ApolloLead(
+  //   model: 'apolloLead',
+  //   query: Record<string, any>,
+  //   user: any,
+  // ) {
+  //   // Pagination
+  //   const page = Number(query.page) > 0 ? Number(query.page) : 1;
+  //   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
+  //   const skip = (page - 1) * limit;
+
+  //   const where: any = { deleted_at: null, AND: [] };
+
+  //   // SAFE JSON PARSE FUNCTION
+  //   const safeToArray = (value: any): string[] => {
+  //     if (value === null || value === undefined) return [];
+
+  //     // Already array
+  //     if (Array.isArray(value)) {
+  //       return value.map((v) => String(v ?? '')).filter((v) => v.length > 0);
+  //     }
+
+  //     // Try parsing JSON
+  //     try {
+  //       const parsed = JSON.parse(value);
+  //       if (Array.isArray(parsed)) {
+  //         return parsed.map((v) => String(v ?? '')).filter((v) => v.length > 0);
+  //       }
+  //       return [String(parsed ?? '')];
+  //     } catch {
+  //       return [String(value ?? '')];
+  //     }
+  //   };
+
+  //   // ========== FREE TEXT SEARCH ==========
+  //   if (query.q) {
+  //     const searchTerm = String(query.q || '').trim();
+  //     if (searchTerm.length > 0) {
+  //       where.AND.push({
+  //         OR: [
+  //           { first_name: { contains: searchTerm, mode: 'insensitive' } },
+  //           { last_name: { contains: searchTerm, mode: 'insensitive' } },
+  //           { title: { contains: searchTerm, mode: 'insensitive' } },
+  //           { company_name: { contains: searchTerm, mode: 'insensitive' } },
+  //           { email: { contains: searchTerm, mode: 'insensitive' } },
+  //           { city: { contains: searchTerm, mode: 'insensitive' } },
+  //           { country: { contains: searchTerm, mode: 'insensitive' } },
+  //           { industry: { contains: searchTerm, mode: 'insensitive' } },
+  //           { keywords: { contains: searchTerm, mode: 'insensitive' } },
+  //           { website: { contains: searchTerm, mode: 'insensitive' } },
+  //           { location: { contains: searchTerm, mode: 'insensitive' } },
+  //         ],
+  //       });
+  //     }
+  //   }
+
+  //   // ========== DYNAMIC FILTERS ==========
+  //   for (const key of Object.keys(query)) {
+  //     if (
+  //       [
+  //         'page',
+  //         'limit',
+  //         'sortBy',
+  //         'order',
+  //         'q',
+  //         'min_employee',
+  //         'max_employee',
+  //         'min_annual_revenue',
+  //         'max_annual_revenue',
+  //       ].includes(key)
+  //     )
+  //       continue;
+
+  //     const rawValue = query[key];
+  //     if (!rawValue) continue;
+
+  //     const values = safeToArray(rawValue);
+  //     if (values.length === 0) continue;
+
+  //     switch (key) {
+  //       case 'name':
+  //         where.AND.push({
+  //           OR: values.flatMap((v) => [
+  //             { first_name: { contains: String(v), mode: 'insensitive' } },
+  //             { last_name: { contains: String(v), mode: 'insensitive' } },
+  //           ]),
+  //         });
+  //         break;
+
+  //       case 'job_titles':
+  //       case 'job_titless':
+  //         where.AND.push({
+  //           OR: values.map((v) => ({
+  //             title: { contains: String(v), mode: 'insensitive' },
+  //           })),
+  //         });
+  //         break;
+
+  //       case 'keyword':
+  //         where.AND.push({
+  //           OR: values.map((v) => ({
+  //             keywords: { contains: String(v), mode: 'insensitive' },
+  //           })),
+  //         });
+  //         break;
+
+  //       case 'company_linkedin':
+  //         where.AND.push({
+  //           OR: values.map((v) => ({
+  //             company_uinkedin_url: { contains: String(v), mode: 'insensitive' },
+  //           })),
+  //         });
+  //         break;
+
+  //       default:
+  //         where.AND.push({
+  //           OR: values.map((v) => ({
+  //             [key]: { contains: String(v), mode: 'insensitive' },
+  //           })),
+  //         });
+  //     }
+  //   }
+
+  //   if (where.AND.length === 0) delete where.AND;
+
+  //   // Sort + order
+  //   const sortBy = query.sortBy || 'created_at';
+  //   const order =
+  //     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+  //       ? (query.order.toLowerCase() as Prisma.SortOrder)
+  //       : Prisma.SortOrder.desc;
+
+  //   const orderBy = { [sortBy]: order };
+
+  //   const delegate: any = (this.prisma as any)[model];
+
+  //   // ========== DB FILTERS (SAFE) ==========
+  //   const allData = await delegate.findMany({
+  //     where,
+  //     orderBy,
+  //   });
+
+  //   let allFilteredData = [...allData];
+
+  //   // ========= EMPLOYEE RANGE FILTER ==========
+  //   if (query.min_employee || query.max_employee) {
+  //     const min = Number(query.min_employee) || 0;
+  //     const max = Number(query.max_employee) || 999999;
+
+  //     allFilteredData = allFilteredData.filter((item) => {
+  //       const emp = item.employees;
+  //       if (!emp || typeof emp !== 'string') return false;
+  //       const num = Number(emp.replace(/\D/g, '')) || 0;
+  //       return num >= min && num <= max;
+  //     });
+  //   }
+
+  //   // ========= ANNUAL REVENUE FILTER ==========
+  //   if (query.min_annual_revenue || query.max_annual_revenue) {
+  //     const min = Number(query.min_annual_revenue) || 0;
+  //     const max = Number(query.max_annual_revenue) || 999999999;
+
+  //     allFilteredData = allFilteredData.filter((item) => {
+  //       const rev = item.annual_revenue;
+  //       if (!rev || typeof rev !== 'string') return false;
+  //       const num = Number(rev.replace(/\D/g, '')) || 0;
+  //       return num >= min && num <= max;
+  //     });
+  //   }
+
+  //   // Total Count
+  //   const newTotal = allFilteredData.length;
+
+  //   // Pagination
+  //   const paginatedData = allFilteredData.slice(skip, skip + limit);
+
+  //   return {
+  //     success: true,
+  //     message: 'Data fetched successfully',
+  //     data: paginatedData,
+  //     meta: {
+  //       total: newTotal,
+  //       page,
+  //       limit,
+  //       pages: Math.ceil(newTotal / limit),
+  //     },
+  //     access: 'authorized',
+  //   };
+  // }
+
+  // private async ApolloLead(
+  //   model: 'apolloLead',
+  //   query: Record<string, any>,
+  //   user: any,
+  // ) {
+  //   const page = Number(query.page) > 0 ? Number(query.page) : 1;
+  //   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
+  //   const skip = (page - 1) * limit;
+
+  //   const where: any = { deleted_at: null, AND: [] };
+
+  //   // List of Date fields → never apply contains
+  //   const dateFields = ['created_at', 'updated_at', 'deleted_at'];
+
+  //   // All String fields from ApolloLead model
+  //   const stringFields = [
+  //     "first_name","last_name","title","company_name","company_name_for_emails",
+  //     "email","email_status","primary_email_source",
+  //     "primary_email_verification_source","email_confidence",
+  //     "primary_email_catch_all_status","primary_email_last_verified_at",
+  //     "seniority","departments","contact_owner","work_direct_phone",
+  //     "home_phone","mobile_phone","corporate_phone","other_phone","stage",
+  //     "lists","last_contacted","account_owner","employees","industry",
+  //     "keywords","person_linkedin_url","website","company_uinkedin_url",
+  //     "facebook_url","twitter_url","city","state","country","company_address",
+  //     "company_city","company_state","company_country","company_phone",
+  //     "technologies","annual_revenue","total_funding","latest_funding",
+  //     "latest_funding_amount","last_raised_at","subsidiary_of","email_sent",
+  //     "email_open","email_bounced","replied","demoed",
+  //     "number_of_retail_locations","apollo_contact_id","apollo_account_id",
+  //     "secondary_email","secondary_email_source","secondary_email_status",
+  //     "secondary_email_verification_source","tertiary_email",
+  //     "tertiary_email_source","tertiary_email_status",
+  //     "tertiary_email_verification_source"
+  //   ];
+
+  //   // SAFE JSON PARSER
+  //   const safeToArray = (value: any) => {
+  //     if (!value) return [];
+  //     if (Array.isArray(value)) return value;
+  //     try {
+  //       const p = JSON.parse(value);
+  //       return Array.isArray(p) ? p : [p];
+  //     } catch {
+  //       return [value];
+  //     }
+  //   };
+
+  //   // FREE TEXT SEARCH
+  //   if (query.q) {
+  //     const q = query.q.trim();
+  //     if (q.length > 0) {
+  //       const orFilters = stringFields.map(f => ({
+  //         [f]: { contains: q, mode: 'insensitive' }
+  //       }));
+  //       where.AND.push({ OR: orFilters });
+  //     }
+  //   }
+
+  //   // DYNAMIC FILTERS
+  //   for (const key of Object.keys(query)) {
+  //     if (['page','limit','sortBy','order','q','min_employee','max_employee','min_annual_revenue','max_annual_revenue'].includes(key))
+  //       continue;
+
+  //     const raw = query[key];
+  //     if (!raw) continue;
+
+  //     // Skip Date fields
+  //     if (dateFields.includes(key)) continue;
+
+  //     // Skip unknown fields
+  //     if (!stringFields.includes(key)) continue;
+
+  //     const values = safeToArray(raw);
+
+  //     where.AND.push({
+  //       OR: values.map(v => ({
+  //         [key]: { contains: String(v), mode: 'insensitive' }
+  //       }))
+  //     });
+  //   }
+
+  //   if (where.AND.length === 0) delete where.AND;
+
+  //   // SORT
+  //   const sortBy = query.sortBy || "created_at";
+  //   const order = ['asc','desc'].includes((query.order || '').toLowerCase())
+  //     ? query.order.toLowerCase()
+  //     : 'desc';
+  //   const orderBy = { [sortBy]: order };
+
+  //   const delegate: any = (prisma as any)[model];
+
+  //   // ================== SAFE FETCH ==================
+  //   // Wrap in try-catch to handle corrupted UTF-8
+  //   let allData: any[] = [];
+  //   try {
+  //     allData = await delegate.findMany({
+  //       where,
+  //       orderBy,
+  //     });
+  //   } catch (err) {
+  //     console.error("Prisma fetch failed due to invalid UTF-8. Attempting fallback...");
+
+  //     // Fallback: fetch raw rows and sanitize
+  //     const rawRows: any[] = await prisma.$queryRawUnsafe(`
+  //       SELECT *
+  //       FROM "ApolloLead"
+  //       WHERE deleted_at IS NULL
+  //       ORDER BY "${sortBy}" ${order.toUpperCase()}
+  //     `);
+
+  //     // Sanitize strings
+  //     allData = rawRows.map(row => {
+  //       for (const key of stringFields) {
+  //         if (row[key] && typeof row[key] === 'string') {
+  //           // Remove invalid UTF-8 / NULL bytes
+  //           row[key] = row[key].replace(/[\0-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
+  //         }
+  //       }
+  //       return row;
+  //     });
+  //   }
+
+  //   // EMPLOYEE FILTER
+  //   if (query.min_employee || query.max_employee) {
+  //     const min = Number(query.min_employee) || 0;
+  //     const max = Number(query.max_employee) || 999999;
+  //     allData = allData.filter(item => {
+  //       const num = Number((item.employees || "").replace(/\D/g, "")) || 0;
+  //       return num >= min && num <= max;
+  //     });
+  //   }
+
+  //   // ANNUAL REVENUE FILTER
+  //   if (query.min_annual_revenue || query.max_annual_revenue) {
+  //     const min = Number(query.min_annual_revenue) || 0;
+  //     const max = Number(query.max_annual_revenue) || 999999999;
+  //     allData = allData.filter(item => {
+  //       const num = Number((item.annual_revenue || "").replace(/\D/g, "")) || 0;
+  //       return num >= min && num <= max;
+  //     });
+  //   }
+
+  //   const total = allData.length;
+  //   const data = allData.slice(skip, skip + limit);
+
+  //   return {
+  //     success: true,
+  //     message: "Data fetched successfully",
+  //     data,
+  //     meta: { total, page, limit, pages: Math.ceil(total / limit) },
+  //     access: "authorized",
+  //   };
+  // }
 
   async getJobTitles(search?: string) {
     try {
@@ -2205,11 +2210,11 @@ private async ApolloLead(
     return zoominfoData;
   }
 
-private async ZoominfoLead(
+  private async ZoominfoLead(
     model: 'zoominfoLead',
     query: Record<string, any>,
     user: any,
-) {
+  ) {
     // 🔹 Pagination setup
     const page = Number(query.page) > 0 ? Number(query.page) : 1;
     const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
@@ -2219,95 +2224,111 @@ private async ZoominfoLead(
 
     // 🔹 Free text search (q)
     if (query.q) {
-        const search = String(query.q).trim();
-        where.AND.push({
-            OR: [
-                { company_id: { contains: search, mode: 'insensitive' } },
-                { name: { contains: search, mode: 'insensitive' } },
-                { email: { contains: search, mode: 'insensitive' } },
-                { email_score: { contains: search, mode: 'insensitive' } },
-                { phone: { contains: search, mode: 'insensitive' } },
-                { work_phone: { contains: search, mode: 'insensitive' } },
-                { lead_location: { contains: search, mode: 'insensitive' } },
-                { location: { contains: search, mode: 'insensitive' } },
-                { lead_divison: { contains: search, mode: 'insensitive' } },
-                { lead_titles: { contains: search, mode: 'insensitive' } },
-                { seniority_level: { contains: search, mode: 'insensitive' } },
-                { skills: { contains: search, mode: 'insensitive' } },
-                { past_companies: { contains: search, mode: 'insensitive' } },
-                { company_name: { contains: search, mode: 'insensitive' } },
-                { company_size: { contains: search, mode: 'insensitive' } },
-                { company_phone_numbers: { contains: search, mode: 'insensitive' } },
-                { company_location_text: { contains: search, mode: 'insensitive' } },
-                { company_type: { contains: search, mode: 'insensitive' } },
-                { company_industry: { contains: search, mode: 'insensitive' } },
-                { company_sector: { contains: search, mode: 'insensitive' } },
-                { company_facebook_page: { contains: search, mode: 'insensitive' } },
-                { revenue_range: { contains: search, mode: 'insensitive' } },
-                { ebitda_range: { contains: search, mode: 'insensitive' } },
-                { company_linkedin_page: { contains: search, mode: 'insensitive' } },
-                { decision_making_power: { contains: search, mode: 'insensitive' } },
-                { company_function: { contains: search, mode: 'insensitive' } },
-                { company_funding_range: { contains: search, mode: 'insensitive' } },
-                { latest_funding_stage: { contains: search, mode: 'insensitive' } },
-                { company_sic_code: { contains: search, mode: 'insensitive' } },
-                { company_naics_code: { contains: search, mode: 'insensitive' } },
-                { company_size_key: { contains: search, mode: 'insensitive' } },
-                { linkedin_url: { contains: search, mode: 'insensitive' } },
-                { company_founded_at: { contains: search, mode: 'insensitive' } },
-                { company_website: { contains: search, mode: 'insensitive' } },
-                { company_products_services: { contains: search, mode: 'insensitive' } },
-            ],
-        });
+      const search = String(query.q).trim();
+      where.AND.push({
+        OR: [
+          { company_id: { contains: search, mode: 'insensitive' } },
+          { name: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          { email_score: { contains: search, mode: 'insensitive' } },
+          { phone: { contains: search, mode: 'insensitive' } },
+          { work_phone: { contains: search, mode: 'insensitive' } },
+          { lead_location: { contains: search, mode: 'insensitive' } },
+          { location: { contains: search, mode: 'insensitive' } },
+          { lead_divison: { contains: search, mode: 'insensitive' } },
+          { lead_titles: { contains: search, mode: 'insensitive' } },
+          { seniority_level: { contains: search, mode: 'insensitive' } },
+          { skills: { contains: search, mode: 'insensitive' } },
+          { past_companies: { contains: search, mode: 'insensitive' } },
+          { company_name: { contains: search, mode: 'insensitive' } },
+          { company_size: { contains: search, mode: 'insensitive' } },
+          { company_phone_numbers: { contains: search, mode: 'insensitive' } },
+          { company_location_text: { contains: search, mode: 'insensitive' } },
+          { company_type: { contains: search, mode: 'insensitive' } },
+          { company_industry: { contains: search, mode: 'insensitive' } },
+          { company_sector: { contains: search, mode: 'insensitive' } },
+          { company_facebook_page: { contains: search, mode: 'insensitive' } },
+          { revenue_range: { contains: search, mode: 'insensitive' } },
+          { ebitda_range: { contains: search, mode: 'insensitive' } },
+          { company_linkedin_page: { contains: search, mode: 'insensitive' } },
+          { decision_making_power: { contains: search, mode: 'insensitive' } },
+          { company_function: { contains: search, mode: 'insensitive' } },
+          { company_funding_range: { contains: search, mode: 'insensitive' } },
+          { latest_funding_stage: { contains: search, mode: 'insensitive' } },
+          { company_sic_code: { contains: search, mode: 'insensitive' } },
+          { company_naics_code: { contains: search, mode: 'insensitive' } },
+          { company_size_key: { contains: search, mode: 'insensitive' } },
+          { linkedin_url: { contains: search, mode: 'insensitive' } },
+          { company_founded_at: { contains: search, mode: 'insensitive' } },
+          { company_website: { contains: search, mode: 'insensitive' } },
+          {
+            company_products_services: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
+        ],
+      });
     }
 
     // 🔹 Dynamic filters
     for (const key of Object.keys(query)) {
-        // FIX: 'location' has been removed from the skip list, allowing it to be processed.
-        if (['page', 'limit', 'name', 'sortBy', 'order', 'q', 'search', 'email'].includes(key))
-            continue;
+      // FIX: 'location' has been removed from the skip list, allowing it to be processed.
+      if (
+        [
+          'page',
+          'limit',
+          'name',
+          'sortBy',
+          'order',
+          'q',
+          'search',
+          'email',
+        ].includes(key)
+      )
+        continue;
 
-        const value = query[key];
-        if (!value) continue;
+      const value = query[key];
+      if (!value) continue;
 
-        let values: string[] = [];
-        try {
-            values = Array.isArray(value) ? value : JSON.parse(value);
-            if (!Array.isArray(values)) values = [String(value)];
-        } catch {
-            values = [String(value)];
-        }
+      let values: string[] = [];
+      try {
+        values = Array.isArray(value) ? value : JSON.parse(value);
+        if (!Array.isArray(values)) values = [String(value)];
+      } catch {
+        values = [String(value)];
+      }
 
-        // LOCATION FIX: Specific handling for the 'location' filter key to query multiple fields
-        if (key === 'location') {
-            where.AND.push({
-                OR: values.flatMap((v) => [
-                    // Search both lead_location and general location fields for the specified values
-                    { lead_location: { contains: v, mode: 'insensitive' } },
-                    { location: { contains: v, mode: 'insensitive' } },
-                ]),
-            });
-        } else {
-            // Existing logic for all other dynamic filters
-            where.AND.push({
-                OR: values.map((v) => ({
-                    [key]: { contains: v, mode: 'insensitive' },
-                })),
-            });
-        }
+      // LOCATION FIX: Specific handling for the 'location' filter key to query multiple fields
+      if (key === 'location') {
+        where.AND.push({
+          OR: values.flatMap((v) => [
+            // Search both lead_location and general location fields for the specified values
+            { lead_location: { contains: v, mode: 'insensitive' } },
+            { location: { contains: v, mode: 'insensitive' } },
+          ]),
+        });
+      } else {
+        // Existing logic for all other dynamic filters
+        where.AND.push({
+          OR: values.map((v) => ({
+            [key]: { contains: v, mode: 'insensitive' },
+          })),
+        });
+      }
     }
 
     // 🔹 Email status filter
     if (query.email) {
-        if (query.email === 'notAvailable') {
-            where.AND.push({
-                OR: [{ email: null }, { email: '' }],
-            });
-        } else if (query.email === 'verified') {
-            where.AND.push({
-                email: { not: null },
-            });
-        }
+      if (query.email === 'notAvailable') {
+        where.AND.push({
+          OR: [{ email: null }, { email: '' }],
+        });
+      } else if (query.email === 'verified') {
+        where.AND.push({
+          email: { not: null },
+        });
+      }
     }
 
     if (where.AND.length === 0) delete where.AND;
@@ -2315,39 +2336,36 @@ private async ZoominfoLead(
     // 🔹 Sorting
     const sortBy = query.sortBy || 'created_at';
     const order =
-        query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-            ? (query.order.toLowerCase() as Prisma.SortOrder)
-            : Prisma.SortOrder.desc;
+      query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+        ? (query.order.toLowerCase() as Prisma.SortOrder)
+        : Prisma.SortOrder.desc;
     const orderBy = { [sortBy]: order };
 
     const delegate = (this.prisma as any)[model];
 
     // 🔹 Fetch data with pagination
     const data = await delegate.findMany({
-        where,
-        take: limit,
-        skip,
-        orderBy,
+      where,
+      take: limit,
+      skip,
+      orderBy,
     });
 
     const total = await delegate.count({ where });
 
     return {
-        success: true,
-        message: 'Data fetched successfully',
-        data,
-        meta: {
-            total,
-            page,
-            limit,
-            pages: Math.ceil(total / limit),
-        },
-        access: 'authorized',
+      success: true,
+      message: 'Data fetched successfully',
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+      access: 'authorized',
     };
-}
-
-
-
+  }
 
   async getEmail(search?: string) {
     try {
@@ -2590,133 +2608,142 @@ private async ZoominfoLead(
     return salesNavigatorData;
   }
 
-private async SalesNavigatorLead(
+  private async SalesNavigatorLead(
     model: 'salesNavigatorLead',
     query: Record<string, any>,
     user: any,
-) {
+  ) {
     // Default pagination values
     const page = Number(query.page) > 0 ? Number(query.page) : 1;
     const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
     const skip = (page - 1) * limit;
-//
+    //
     const where: any = { AND: [] };
 
     // 🔍 Global Search Logic
     if (query.q) {
-        const search = String(query.q).trim();
-        where.AND.push({
-            OR: [
-                { job_title: { contains: search, mode: 'insensitive' } },
-                { company_domain: { contains: search, mode: 'insensitive' } },
-                { url: { contains: search, mode: 'insensitive' } },
-                { email_first: { contains: search, mode: 'insensitive' } },
-                { email_second: { contains: search, mode: 'insensitive' } },
-                { city: { contains: search, mode: 'insensitive' } },
-                { location: { contains: search, mode: 'insensitive' } },
-                { first_name: { contains: search, mode: 'insensitive' } },
-                { last_name: { contains: search, mode: 'insensitive' } },
-                { phone: { contains: search, mode: 'insensitive' } },
-                { company_phone: { contains: search, mode: 'insensitive' } },
-                { company_name: { contains: search, mode: 'insensitive' } },
-                { company_id: { contains: search, mode: 'insensitive' } },
-                { linkedin_id: { contains: search, mode: 'insensitive' } },
-            ],
-        });
+      const search = String(query.q).trim();
+      where.AND.push({
+        OR: [
+          { job_title: { contains: search, mode: 'insensitive' } },
+          { company_domain: { contains: search, mode: 'insensitive' } },
+          { url: { contains: search, mode: 'insensitive' } },
+          { email_first: { contains: search, mode: 'insensitive' } },
+          { email_second: { contains: search, mode: 'insensitive' } },
+          { city: { contains: search, mode: 'insensitive' } },
+          { location: { contains: search, mode: 'insensitive' } },
+          { first_name: { contains: search, mode: 'insensitive' } },
+          { last_name: { contains: search, mode: 'insensitive' } },
+          { phone: { contains: search, mode: 'insensitive' } },
+          { company_phone: { contains: search, mode: 'insensitive' } },
+          { company_name: { contains: search, mode: 'insensitive' } },
+          { company_id: { contains: search, mode: 'insensitive' } },
+          { linkedin_id: { contains: search, mode: 'insensitive' } },
+        ],
+      });
     }
 
     // 🔹 Dynamic filters
     for (const key of Object.keys(query)) {
-        // FIX: 'location' is now skipped here so it can be handled separately below.
-        if (
-            ['page', 'limit', 'name', 'sortBy', 'order', 'q', 'search', 'location'].includes(
-                key,
-            )
-        )
-            continue;
+      // FIX: 'location' is now skipped here so it can be handled separately below.
+      if (
+        [
+          'page',
+          'limit',
+          'name',
+          'sortBy',
+          'order',
+          'q',
+          'search',
+          'location',
+        ].includes(key)
+      )
+        continue;
 
-        const value = query[key];
-        if (!value) continue;
+      const value = query[key];
+      if (!value) continue;
 
-        let values: string[] = [];
-        try {
-            values = Array.isArray(value) ? value : JSON.parse(value);
-            if (!Array.isArray(values)) values = [String(value)];
-        } catch {
-            values = [String(value)];
-        }
+      let values: string[] = [];
+      try {
+        values = Array.isArray(value) ? value : JSON.parse(value);
+        if (!Array.isArray(values)) values = [String(value)];
+      } catch {
+        values = [String(value)];
+      }
 
-        where.AND.push({
-            OR: values.map((v) => ({
-                [key]: { contains: v, mode: 'insensitive' },
-            })),
-        });
+      where.AND.push({
+        OR: values.map((v) => ({
+          [key]: { contains: v, mode: 'insensitive' },
+        })),
+      });
     }
 
     // 🎯 LOCATION FIX: Handle pipe-separated location values
     if (query.location) {
-        let locationValues: string[];
-        const locationQueryValue = String(query.location);
+      let locationValues: string[];
+      const locationQueryValue = String(query.location);
 
-        // 1. Split by pipe '|' (which is %7C in the URL) to get multiple locations
-        if (locationQueryValue.includes('|')) {
-            locationValues = locationQueryValue.split('|');
-        } else {
-            // Handle single location value
-            locationValues = [locationQueryValue];
-        }
+      // 1. Split by pipe '|' (which is %7C in the URL) to get multiple locations
+      if (locationQueryValue.includes('|')) {
+        locationValues = locationQueryValue.split('|');
+      } else {
+        // Handle single location value
+        locationValues = [locationQueryValue];
+      }
 
-        // 2. Map and clean each value, replacing '+' with space
-        const formattedLocations = locationValues.map(v => v.trim().replace(/\+/g, ' '));
+      // 2. Map and clean each value, replacing '+' with space
+      const formattedLocations = locationValues.map((v) =>
+        v.trim().replace(/\+/g, ' '),
+      );
 
-        // 3. Add the OR filter for all formatted locations
-        where.AND.push({
-            OR: formattedLocations.map(locationName => ({
-                location: { contains: locationName, mode: 'insensitive' },
-            })),
-        });
+      // 3. Add the OR filter for all formatted locations
+      where.AND.push({
+        OR: formattedLocations.map((locationName) => ({
+          location: { contains: locationName, mode: 'insensitive' },
+        })),
+      });
     }
 
     if (where.AND.length === 0) {
-        delete where.AND;
+      delete where.AND;
     }
 
     // Sorting setup
     const sortBy = query.sortBy || 'created_at';
     const order =
-        query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-            ? (query.order.toLowerCase() as Prisma.SortOrder)
-            : Prisma.SortOrder.desc;
+      query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+        ? (query.order.toLowerCase() as Prisma.SortOrder)
+        : Prisma.SortOrder.desc;
     const orderBy = { [sortBy]: order };
 
     // Model delegate for querying
     const delegate: {
-        findMany: (args?: any) => Promise<any[]>;
-        count: (args?: any) => Promise<number>;
+      findMany: (args?: any) => Promise<any[]>;
+      count: (args?: any) => Promise<number>;
     } = (this.prisma as any)[model];
 
     const data = await delegate.findMany({
-        where,
-        take: limit,
-        skip,
-        orderBy,
+      where,
+      take: limit,
+      skip,
+      orderBy,
     });
 
     const total = await delegate.count({ where });
 
     return {
-        success: true,
-        message: 'Data fetched successfully',
-        data,
-        meta: {
-            total,
-            page,
-            limit,
-            pages: Math.ceil(total / limit),
-        },
-        access: 'authorized',
+      success: true,
+      message: 'Data fetched successfully',
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+      access: 'authorized',
     };
-}
+  }
 
   async getJobTitle(search?: string) {
     try {
