@@ -1345,6 +1345,196 @@ private async deleteWithLimit(
 //   };
 // }
 
+// private async ApolloLead(
+//   model: 'apolloLead',
+//   query: Record<string, any>,
+//   user: any,
+// ) {
+//   // Pagination
+//   const page = Number(query.page) > 0 ? Number(query.page) : 1;
+//   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
+//   const skip = (page - 1) * limit;
+
+//   const where: any = { deleted_at: null, AND: [] };
+
+//   // SAFE JSON PARSE FUNCTION
+//   const safeToArray = (value: any): string[] => {
+//     if (value === null || value === undefined) return [];
+
+//     // Already array
+//     if (Array.isArray(value)) {
+//       return value.map((v) => String(v ?? '')).filter((v) => v.length > 0);
+//     }
+
+//     // Try parsing JSON
+//     try {
+//       const parsed = JSON.parse(value);
+//       if (Array.isArray(parsed)) {
+//         return parsed.map((v) => String(v ?? '')).filter((v) => v.length > 0);
+//       }
+//       return [String(parsed ?? '')];
+//     } catch {
+//       return [String(value ?? '')];
+//     }
+//   };
+
+//   // ========== FREE TEXT SEARCH ==========
+//   if (query.q) {
+//     const searchTerm = String(query.q || '').trim();
+//     if (searchTerm.length > 0) {
+//       where.AND.push({
+//         OR: [
+//           { first_name: { contains: searchTerm, mode: 'insensitive' } },
+//           { last_name: { contains: searchTerm, mode: 'insensitive' } },
+//           { title: { contains: searchTerm, mode: 'insensitive' } },
+//           { company_name: { contains: searchTerm, mode: 'insensitive' } },
+//           { email: { contains: searchTerm, mode: 'insensitive' } },
+//           { city: { contains: searchTerm, mode: 'insensitive' } },
+//           { country: { contains: searchTerm, mode: 'insensitive' } },
+//           { industry: { contains: searchTerm, mode: 'insensitive' } },
+//           { keywords: { contains: searchTerm, mode: 'insensitive' } },
+//           { website: { contains: searchTerm, mode: 'insensitive' } },
+//           { location: { contains: searchTerm, mode: 'insensitive' } },
+//         ],
+//       });
+//     }
+//   }
+
+//   // ========== DYNAMIC FILTERS ==========
+//   for (const key of Object.keys(query)) {
+//     if (
+//       [
+//         'page',
+//         'limit',
+//         'sortBy',
+//         'order',
+//         'q',
+//         'min_employee',
+//         'max_employee',
+//         'min_annual_revenue',
+//         'max_annual_revenue',
+//       ].includes(key)
+//     )
+//       continue;
+
+//     const rawValue = query[key];
+//     if (!rawValue) continue;
+
+//     const values = safeToArray(rawValue);
+//     if (values.length === 0) continue;
+
+//     switch (key) {
+//       case 'name':
+//         where.AND.push({
+//           OR: values.flatMap((v) => [
+//             { first_name: { contains: String(v), mode: 'insensitive' } },
+//             { last_name: { contains: String(v), mode: 'insensitive' } },
+//           ]),
+//         });
+//         break;
+
+//       case 'job_titles':
+//       case 'job_titless':
+//         where.AND.push({
+//           OR: values.map((v) => ({
+//             title: { contains: String(v), mode: 'insensitive' },
+//           })),
+//         });
+//         break;
+
+//       case 'keyword':
+//         where.AND.push({
+//           OR: values.map((v) => ({
+//             keywords: { contains: String(v), mode: 'insensitive' },
+//           })),
+//         });
+//         break;
+
+//       case 'company_linkedin':
+//         where.AND.push({
+//           OR: values.map((v) => ({
+//             company_uinkedin_url: { contains: String(v), mode: 'insensitive' },
+//           })),
+//         });
+//         break;
+
+//       default:
+//         where.AND.push({
+//           OR: values.map((v) => ({
+//             [key]: { contains: String(v), mode: 'insensitive' },
+//           })),
+//         });
+//     }
+//   }
+
+//   if (where.AND.length === 0) delete where.AND;
+
+//   // Sort + order
+//   const sortBy = query.sortBy || 'created_at';
+//   const order =
+//     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+//       ? (query.order.toLowerCase() as Prisma.SortOrder)
+//       : Prisma.SortOrder.desc;
+
+//   const orderBy = { [sortBy]: order };
+
+//   const delegate: any = (this.prisma as any)[model];
+
+//   // ========== DB FILTERS (SAFE) ==========
+//   const allData = await delegate.findMany({
+//     where,
+//     orderBy,
+//   });
+
+//   let allFilteredData = [...allData];
+
+//   // ========= EMPLOYEE RANGE FILTER ==========
+//   if (query.min_employee || query.max_employee) {
+//     const min = Number(query.min_employee) || 0;
+//     const max = Number(query.max_employee) || 999999;
+
+//     allFilteredData = allFilteredData.filter((item) => {
+//       const emp = item.employees;
+//       if (!emp || typeof emp !== 'string') return false;
+//       const num = Number(emp.replace(/\D/g, '')) || 0;
+//       return num >= min && num <= max;
+//     });
+//   }
+
+//   // ========= ANNUAL REVENUE FILTER ==========
+//   if (query.min_annual_revenue || query.max_annual_revenue) {
+//     const min = Number(query.min_annual_revenue) || 0;
+//     const max = Number(query.max_annual_revenue) || 999999999;
+
+//     allFilteredData = allFilteredData.filter((item) => {
+//       const rev = item.annual_revenue;
+//       if (!rev || typeof rev !== 'string') return false;
+//       const num = Number(rev.replace(/\D/g, '')) || 0;
+//       return num >= min && num <= max;
+//     });
+//   }
+
+//   // Total Count
+//   const newTotal = allFilteredData.length;
+
+//   // Pagination
+//   const paginatedData = allFilteredData.slice(skip, skip + limit);
+
+//   return {
+//     success: true,
+//     message: 'Data fetched successfully',
+//     data: paginatedData,
+//     meta: {
+//       total: newTotal,
+//       page,
+//       limit,
+//       pages: Math.ceil(newTotal / limit),
+//     },
+//     access: 'authorized',
+//   };
+// }
+
+
 private async ApolloLead(
   model: 'apolloLead',
   query: Record<string, any>,
@@ -1357,50 +1547,51 @@ private async ApolloLead(
 
   const where: any = { deleted_at: null, AND: [] };
 
-  // SAFE JSON PARSE FUNCTION
+  // SAFE ARRAY PARSER
   const safeToArray = (value: any): string[] => {
-    if (value === null || value === undefined) return [];
+    if (!value) return [];
+    if (Array.isArray(value)) return value.map(String);
 
-    // Already array
-    if (Array.isArray(value)) {
-      return value.map((v) => String(v ?? '')).filter((v) => v.length > 0);
-    }
-
-    // Try parsing JSON
     try {
       const parsed = JSON.parse(value);
-      if (Array.isArray(parsed)) {
-        return parsed.map((v) => String(v ?? '')).filter((v) => v.length > 0);
-      }
-      return [String(parsed ?? '')];
+      return Array.isArray(parsed) ? parsed.map(String) : [String(parsed)];
     } catch {
-      return [String(value ?? '')];
+      return [String(value)];
     }
   };
 
-  // ========== FREE TEXT SEARCH ==========
+  // Allowed string filter fields (to avoid Prisma crash)
+  const STRING_FIELDS = [
+    'first_name',
+    'last_name',
+    'title',
+    'company_name',
+    'email',
+    'city',
+    'country',
+    'industry',
+    'keywords',
+    'website',
+    'location',
+    'company_linkedin',
+    'keyword',
+    'job_titles',
+    'job_titless',
+  ];
+
+  // ================= TEXT SEARCH =================
   if (query.q) {
-    const searchTerm = String(query.q || '').trim();
-    if (searchTerm.length > 0) {
+    const searchTerm = String(query.q).trim();
+    if (searchTerm) {
       where.AND.push({
-        OR: [
-          { first_name: { contains: searchTerm, mode: 'insensitive' } },
-          { last_name: { contains: searchTerm, mode: 'insensitive' } },
-          { title: { contains: searchTerm, mode: 'insensitive' } },
-          { company_name: { contains: searchTerm, mode: 'insensitive' } },
-          { email: { contains: searchTerm, mode: 'insensitive' } },
-          { city: { contains: searchTerm, mode: 'insensitive' } },
-          { country: { contains: searchTerm, mode: 'insensitive' } },
-          { industry: { contains: searchTerm, mode: 'insensitive' } },
-          { keywords: { contains: searchTerm, mode: 'insensitive' } },
-          { website: { contains: searchTerm, mode: 'insensitive' } },
-          { location: { contains: searchTerm, mode: 'insensitive' } },
-        ],
+        OR: STRING_FIELDS.map((f) => ({
+          [f]: { contains: searchTerm, mode: 'insensitive' },
+        })),
       });
     }
   }
 
-  // ========== DYNAMIC FILTERS ==========
+  // ================= DYNAMIC FILTER =================
   for (const key of Object.keys(query)) {
     if (
       [
@@ -1417,59 +1608,22 @@ private async ApolloLead(
     )
       continue;
 
-    const rawValue = query[key];
-    if (!rawValue) continue;
+    const values = safeToArray(query[key]);
+    if (!values.length) continue;
 
-    const values = safeToArray(rawValue);
-    if (values.length === 0) continue;
 
-    switch (key) {
-      case 'name':
-        where.AND.push({
-          OR: values.flatMap((v) => [
-            { first_name: { contains: String(v), mode: 'insensitive' } },
-            { last_name: { contains: String(v), mode: 'insensitive' } },
-          ]),
-        });
-        break;
+    if (!STRING_FIELDS.includes(key)) continue;
 
-      case 'job_titles':
-      case 'job_titless':
-        where.AND.push({
-          OR: values.map((v) => ({
-            title: { contains: String(v), mode: 'insensitive' },
-          })),
-        });
-        break;
-
-      case 'keyword':
-        where.AND.push({
-          OR: values.map((v) => ({
-            keywords: { contains: String(v), mode: 'insensitive' },
-          })),
-        });
-        break;
-
-      case 'company_linkedin':
-        where.AND.push({
-          OR: values.map((v) => ({
-            company_uinkedin_url: { contains: String(v), mode: 'insensitive' },
-          })),
-        });
-        break;
-
-      default:
-        where.AND.push({
-          OR: values.map((v) => ({
-            [key]: { contains: String(v), mode: 'insensitive' },
-          })),
-        });
-    }
+    where.AND.push({
+      OR: values.map((v) => ({
+        [key]: { contains: v, mode: 'insensitive' },
+      })),
+    });
   }
 
   if (where.AND.length === 0) delete where.AND;
 
-  // Sort + order
+  // Sorting
   const sortBy = query.sortBy || 'created_at';
   const order =
     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
@@ -1478,57 +1632,55 @@ private async ApolloLead(
 
   const orderBy = { [sortBy]: order };
 
+  // Prisma delegate
   const delegate: any = (this.prisma as any)[model];
 
-  // ========== DB FILTERS (SAFE) ==========
+  // SAFE DB CALL
   const allData = await delegate.findMany({
     where,
     orderBy,
   });
 
-  let allFilteredData = [...allData];
+  let filtered = [...allData];
 
-  // ========= EMPLOYEE RANGE FILTER ==========
+  // Employees range
   if (query.min_employee || query.max_employee) {
     const min = Number(query.min_employee) || 0;
     const max = Number(query.max_employee) || 999999;
 
-    allFilteredData = allFilteredData.filter((item) => {
+    filtered = filtered.filter((item) => {
       const emp = item.employees;
       if (!emp || typeof emp !== 'string') return false;
-      const num = Number(emp.replace(/\D/g, '')) || 0;
+      const num = Number(emp.replace(/\D/g, ''));
       return num >= min && num <= max;
     });
   }
 
-  // ========= ANNUAL REVENUE FILTER ==========
+  // Revenue range
   if (query.min_annual_revenue || query.max_annual_revenue) {
     const min = Number(query.min_annual_revenue) || 0;
     const max = Number(query.max_annual_revenue) || 999999999;
 
-    allFilteredData = allFilteredData.filter((item) => {
+    filtered = filtered.filter((item) => {
       const rev = item.annual_revenue;
       if (!rev || typeof rev !== 'string') return false;
-      const num = Number(rev.replace(/\D/g, '')) || 0;
+      const num = Number(rev.replace(/\D/g, ''));
       return num >= min && num <= max;
     });
   }
 
-  // Total Count
-  const newTotal = allFilteredData.length;
-
-  // Pagination
-  const paginatedData = allFilteredData.slice(skip, skip + limit);
+  const total = filtered.length;
+  const paginated = filtered.slice(skip, skip + limit);
 
   return {
     success: true,
     message: 'Data fetched successfully',
-    data: paginatedData,
+    data: paginated,
     meta: {
-      total: newTotal,
+      total,
       page,
       limit,
-      pages: Math.ceil(newTotal / limit),
+      pages: Math.ceil(total / limit),
     },
     access: 'authorized',
   };
