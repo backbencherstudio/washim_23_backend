@@ -1191,10 +1191,12 @@ private async ApolloLead(
   query: Record<string, any>,
   user: any,
 ) {
+  // 1. Setup Pagination Parameters
   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  const limit = Number(query.limit) > 0 ? Number(query.limit) : undefined; // undefined = no limit
-  const skip = limit ? (page - 1) * limit : undefined;
+  const limit = Number(query.limit) > 0 ? Number(query.limit) : undefined;
+  const skip = limit ? (page - 1) * limit : 0; // Set skip to 0 if no limit
 
+  // 2. Setup Database WHERE Clause
   const where: any = { deleted_at: null };
   where.AND = [];
 
@@ -1217,8 +1219,9 @@ private async ApolloLead(
     });
   }
 
-  // 🔧 Dynamic Filters
+  // 🔧 Dynamic Filters (Applies filters that can be handled by the DB)
   for (const key of Object.keys(query)) {
+    // Skip pagination, sort, search query, and in-memory filter keys
     if (['page', 'limit', 'sortBy', 'order', 'q', 'min_employee', 'max_employee', 'min_annual_revenue', 'max_annual_revenue'].includes(key))
       continue;
 
@@ -1285,28 +1288,32 @@ private async ApolloLead(
 
   if (where.AND.length === 0) delete where.AND;
 
+  // 3. Setup Sorting
   const sortBy = query.sortBy || 'created_at';
   const order =
     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
       ? (query.order.toLowerCase() as Prisma.SortOrder)
       : Prisma.SortOrder.desc;
-
   const orderBy = { [sortBy]: order };
 
   const delegate: any = (this.prisma as any)[model];
 
-  // ==================================
-  // 🔹 Fetch all if no limit/filters
-  // ==================================
+  // --- START OF FIX: Fetch ALL matching data for correct total count ---
+  
+  // 4. Fetch all data that matches DB-compatible filters.
+  // We intentionally remove 'take' and 'skip' here to fetch the complete set
+  // for accurate in-memory range filtering.
   let data = await delegate.findMany({
     where,
     orderBy,
-    take: limit,  // undefined = all
-    skip,
+    // take: limit, // REMOVED
+    // skip,        // REMOVED
   });
 
   let finalData = data;
 
+  // 5. Apply In-Memory Range Filters
+  
   // ==================================
   // 🔥 Employee Range Filter
   // ==================================
@@ -1315,8 +1322,13 @@ private async ApolloLead(
     const max = Number(query.max_employee) || 999999;
 
     finalData = finalData.filter((item) => {
+      // Assuming 'employees' is a string like "10k-50k" or "10"
       if (!item.employees) return false;
-      const num = Number(item.employees.replace(/\D/g, ''));
+      // Extract only digits to handle formats like "10k-50k" by taking the first number,
+      // which is acceptable for a simple range comparison
+      const numMatch = String(item.employees).match(/\d+/); 
+      const num = numMatch ? Number(numMatch[0]) : NaN; 
+      
       if (isNaN(num)) return false;
       return num >= min && num <= max;
     });
@@ -1330,22 +1342,35 @@ private async ApolloLead(
     const maxR = Number(query.max_annual_revenue) || 9999999;
 
     finalData = finalData.filter((item) => {
+      // Assuming 'annual_revenue' is a string
       if (!item.annual_revenue) return false;
-      const num = Number(item.annual_revenue.replace(/\D/g, ''));
+      const numMatch = String(item.annual_revenue).match(/\d+/);
+      const num = numMatch ? Number(numMatch[0]) : NaN;
+
       if (isNaN(num)) return false;
       return num >= minR && num <= maxR;
     });
   }
+  
+  // 6. Calculate Total Count and Manually Paginate
+  const totalCount = finalData.length;
+
+  if (limit) {
+    // Slice the full filtered array to get only the current page's data
+    finalData = finalData.slice(skip, skip + limit); 
+  }
+
+  // --- END OF FIX ---
 
   return {
     success: true,
     message: 'Data fetched successfully',
-    data: finalData,
+    data: finalData, // This is the paginated data (max 'limit' items)
     meta: {
-      total: finalData.length,
+      total: totalCount, // This is the corrected total count across ALL pages
       page: limit ? page : 1,
-      limit: limit || finalData.length,
-      pages: limit ? Math.ceil(finalData.length / limit) : 1,
+      limit: limit || totalCount,
+      pages: limit ? Math.ceil(totalCount / limit) : 1,
     },
     access: 'authorized',
   };
