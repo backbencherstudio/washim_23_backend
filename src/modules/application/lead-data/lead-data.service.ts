@@ -1389,7 +1389,7 @@ private async ApolloLead(
 ) {
   // 🔹 Pagination setup
   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  const limit = Number(query.limit) > 0 ? Number(query.limit) : 20; 
+  const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
   const skip = (page - 1) * limit;
 
   const where: any = { deleted_at: null };
@@ -1413,19 +1413,20 @@ private async ApolloLead(
       continue;
 
     const value = query[key];
-    if (!value) continue;
+    if (value === undefined || value === null) continue;
 
+    // Parse value into array of strings safely
     let values: string[] = [];
     try {
-      values = Array.isArray(value) ? value : JSON.parse(value);
-      if (!Array.isArray(values)) values = [String(value)];
+      const parsed = Array.isArray(value) ? value : JSON.parse(value);
+      values = Array.isArray(parsed)
+        ? parsed.map((v) => (v !== null && v !== undefined ? String(v) : null)).filter(Boolean)
+        : [String(parsed)];
     } catch {
       values = [String(value)];
     }
 
-    const orClauses = values.map((v) => ({
-      [key]: { contains: v, mode: 'insensitive' },
-    }));
+    if (!values.length) continue;
 
     switch (key) {
       case 'name':
@@ -1437,12 +1438,15 @@ private async ApolloLead(
         });
         break;
       default:
-        where.AND.push({ OR: orClauses });
+        where.AND.push({
+          OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
+        });
     }
   }
 
   if (where.AND.length === 0) delete where.AND;
 
+  // 🔹 Sorting
   const sortBy = query.sortBy || 'created_at';
   const order =
     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
@@ -1452,7 +1456,7 @@ private async ApolloLead(
 
   const delegate: any = (this.prisma as any)[model];
 
-  // --- 🚀 Employees & Annual Revenue Filters ---
+  // --- Numeric filters ---
   const minEmp = query.min_employee ? Number(query.min_employee) : null;
   const maxEmp = query.max_employee ? Number(query.max_employee) : null;
   const minRev = query.min_annual_revenue ? Number(query.min_annual_revenue) : null;
@@ -1464,12 +1468,12 @@ private async ApolloLead(
     orderBy,
   });
 
-  // --- Apply numeric filtering in JS if min/max are provided ---
+  // --- Apply numeric filtering in JS ---
   let filteredData = allData;
   if (minEmp !== null || maxEmp !== null || minRev !== null || maxRev !== null) {
     filteredData = allData.filter((row: any) => {
-      const emp = Number(row.employees);
-      const rev = Number(row.annual_revenue);
+      const emp = Number(row.employees ?? 0);
+      const rev = Number(row.annual_revenue ?? 0);
 
       if (minEmp !== null && emp < minEmp) return false;
       if (maxEmp !== null && emp > maxEmp) return false;
@@ -1499,6 +1503,7 @@ private async ApolloLead(
     access: 'authorized',
   };
 }
+
 
 
 
