@@ -1540,151 +1540,144 @@ private async ApolloLead(
   query: Record<string, any>,
   user: any,
 ) {
-  // Pagination
   const page = Number(query.page) > 0 ? Number(query.page) : 1;
   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
   const skip = (page - 1) * limit;
 
   const where: any = { deleted_at: null, AND: [] };
 
-  // SAFE ARRAY PARSER
-  const safeToArray = (value: any): string[] => {
-    if (!value) return [];
-    if (Array.isArray(value)) return value.map(String);
+  // List of Date fields → never apply contains
+  const dateFields = ['created_at', 'updated_at', 'deleted_at'];
 
+  // All String fields from ApolloLead model
+  const stringFields = [
+    "first_name","last_name","title","company_name","company_name_for_emails",
+    "email","email_status","primary_email_source",
+    "primary_email_verification_source","email_confidence",
+    "primary_email_catch_all_status","primary_email_last_verified_at",
+    "seniority","departments","contact_owner","work_direct_phone",
+    "home_phone","mobile_phone","corporate_phone","other_phone","stage",
+    "lists","last_contacted","account_owner","employees","industry",
+    "keywords","person_linkedin_url","website","company_uinkedin_url",
+    "facebook_url","twitter_url","city","state","country","company_address",
+    "company_city","company_state","company_country","company_phone",
+    "technologies","annual_revenue","total_funding","latest_funding",
+    "latest_funding_amount","last_raised_at","subsidiary_of","email_sent",
+    "email_open","email_bounced","replied","demoed",
+    "number_of_retail_locations","apollo_contact_id","apollo_account_id",
+    "secondary_email","secondary_email_source","secondary_email_status",
+    "secondary_email_verification_source","tertiary_email",
+    "tertiary_email_source","tertiary_email_status",
+    "tertiary_email_verification_source"
+  ];
+
+  // SAFE JSON PARSER
+  const safeToArray = (value: any) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
     try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed.map(String) : [String(parsed)];
+      const p = JSON.parse(value);
+      return Array.isArray(p) ? p : [p];
     } catch {
-      return [String(value)];
+      return [value];
     }
   };
 
-  // Allowed string filter fields (to avoid Prisma crash)
-  const STRING_FIELDS = [
-    'first_name',
-    'last_name',
-    'title',
-    'company_name',
-    'email',
-    'city',
-    'country',
-    'industry',
-    'keywords',
-    'website',
-    'location',
-    'company_linkedin',
-    'keyword',
-    'job_titles',
-    'job_titless',
-  ];
-
-  // ================= TEXT SEARCH =================
+  // FREE TEXT SEARCH
   if (query.q) {
-    const searchTerm = String(query.q).trim();
-    if (searchTerm) {
+    const q = query.q.trim();
+    if (q.length > 0) {
       where.AND.push({
-        OR: STRING_FIELDS.map((f) => ({
-          [f]: { contains: searchTerm, mode: 'insensitive' },
-        })),
+        OR: [
+          { first_name: { contains: q, mode: 'insensitive' } },
+          { last_name: { contains: q, mode: 'insensitive' } },
+          { title: { contains: q, mode: 'insensitive' } },
+          { company_name: { contains: q, mode: 'insensitive' } },
+          { email: { contains: q, mode: 'insensitive' } },
+          { city: { contains: q, mode: 'insensitive' } },
+          { country: { contains: q, mode: 'insensitive' } },
+          { industry: { contains: q, mode: 'insensitive' } },
+          { keywords: { contains: q, mode: 'insensitive' } },
+          { website: { contains: q, mode: 'insensitive' } },
+        ]
       });
     }
   }
 
-  // ================= DYNAMIC FILTER =================
+  // DYNAMIC FILTERS
   for (const key of Object.keys(query)) {
-    if (
-      [
-        'page',
-        'limit',
-        'sortBy',
-        'order',
-        'q',
-        'min_employee',
-        'max_employee',
-        'min_annual_revenue',
-        'max_annual_revenue',
-      ].includes(key)
-    )
+    if (['page','limit','sortBy','order','q','min_employee','max_employee','min_annual_revenue','max_annual_revenue'].includes(key))
       continue;
 
-    const values = safeToArray(query[key]);
-    if (!values.length) continue;
+    const raw = query[key];
+    if (!raw) continue;
 
+    // Skip Date fields
+    if (dateFields.includes(key)) continue;
 
-    if (!STRING_FIELDS.includes(key)) continue;
+    // Skip unknown fields
+    if (!stringFields.includes(key)) continue;
+
+    const values = safeToArray(raw);
 
     where.AND.push({
-      OR: values.map((v) => ({
-        [key]: { contains: v, mode: 'insensitive' },
-      })),
+      OR: values.map(v => ({
+        [key]: { contains: String(v), mode: 'insensitive' }
+      }))
     });
   }
 
   if (where.AND.length === 0) delete where.AND;
 
-  // Sorting
-  const sortBy = query.sortBy || 'created_at';
-  const order =
-    query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-      ? (query.order.toLowerCase() as Prisma.SortOrder)
-      : Prisma.SortOrder.desc;
+  const sortBy = query.sortBy || "created_at";
+  const order = ['asc','desc'].includes((query.order || '').toLowerCase())
+    ? query.order.toLowerCase()
+    : 'desc';
 
   const orderBy = { [sortBy]: order };
 
-  // Prisma delegate
   const delegate: any = (this.prisma as any)[model];
 
-  // SAFE DB CALL
+  // SAFE QUERY (no more crashing)
   const allData = await delegate.findMany({
     where,
     orderBy,
   });
 
-  let filtered = [...allData];
+  let allFilteredData = [...allData];
 
-  // Employees range
+  // EMPLOYEE FILTER
   if (query.min_employee || query.max_employee) {
     const min = Number(query.min_employee) || 0;
     const max = Number(query.max_employee) || 999999;
-
-    filtered = filtered.filter((item) => {
-      const emp = item.employees;
-      if (!emp || typeof emp !== 'string') return false;
-      const num = Number(emp.replace(/\D/g, ''));
+    allFilteredData = allFilteredData.filter(item => {
+      const num = Number((item.employees || "").replace(/\D/g, "")) || 0;
       return num >= min && num <= max;
     });
   }
 
-  // Revenue range
+  // ANNUAL REVENUE FILTER
   if (query.min_annual_revenue || query.max_annual_revenue) {
     const min = Number(query.min_annual_revenue) || 0;
     const max = Number(query.max_annual_revenue) || 999999999;
-
-    filtered = filtered.filter((item) => {
-      const rev = item.annual_revenue;
-      if (!rev || typeof rev !== 'string') return false;
-      const num = Number(rev.replace(/\D/g, ''));
+    allFilteredData = allFilteredData.filter(item => {
+      const num = Number((item.annual_revenue || "").replace(/\D/g, "")) || 0;
       return num >= min && num <= max;
     });
   }
 
-  const total = filtered.length;
-  const paginated = filtered.slice(skip, skip + limit);
+  const total = allFilteredData.length;
+  const data = allFilteredData.slice(skip, skip + limit);
 
   return {
     success: true,
-    message: 'Data fetched successfully',
-    data: paginated,
-    meta: {
-      total,
-      page,
-      limit,
-      pages: Math.ceil(total / limit),
-    },
-    access: 'authorized',
+    message: "Data fetched successfully",
+    data,
+    meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    access: "authorized",
   };
 }
+
 
 
 
