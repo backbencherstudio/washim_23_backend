@@ -1382,130 +1382,372 @@ export class LeadDataService {
   //   };
   // }
 
-private async ApolloLead(
-  model: 'apolloLead',
-  query: Record<string, any>,
-  user: any,
-) {
-  // 🔹 Pagination setup
-  const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
-  const skip = (page - 1) * limit;
+  // private async ApolloLead(
+  //   model: 'apolloLead',
+  //   query: Record<string, any>,
+  //   user: any,
+  // ) {
+  //   // 🔹 Pagination setup
+  //   const page = Number(query.page) > 0 ? Number(query.page) : 1;
+  //   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
+  //   const skip = (page - 1) * limit;
 
-  const where: any = { deleted_at: null };
-  where.AND = [];
+  //   const where: any = { deleted_at: null };
+  //   where.AND = [];
 
-  // 🔹 Dynamic filters (non-range)
-  for (const key of Object.keys(query)) {
-    if (
-      [
-        'page',
-        'limit',
-        'sortBy',
-        'order',
-        'q',
-        'min_employee',
-        'max_employee',
-        'min_annual_revenue',
-        'max_annual_revenue',
-      ].includes(key)
-    )
-      continue;
+  //   // 🔹 Dynamic filters (non-range)
+  //   for (const key of Object.keys(query)) {
+  //     if (
+  //       [
+  //         'page',
+  //         'limit',
+  //         'sortBy',
+  //         'order',
+  //         'q',
+  //         'min_employee',
+  //         'max_employee',
+  //         'min_annual_revenue',
+  //         'max_annual_revenue',
+  //       ].includes(key)
+  //     )
+  //       continue;
 
-    const value = query[key];
-    if (value === undefined || value === null) continue;
+  //     const value = query[key];
+  //     if (value === undefined || value === null) continue;
 
-    // Parse value into array of strings safely
-    let values: string[] = [];
-    try {
-      const parsed = Array.isArray(value) ? value : JSON.parse(value);
-      values = Array.isArray(parsed)
-        ? parsed.map((v) => (v !== null && v !== undefined ? String(v) : null)).filter(Boolean)
-        : [String(parsed)];
-    } catch {
-      values = [String(value)];
+  //     // Parse value into array of strings safely
+  //     let values: string[] = [];
+  //     try {
+  //       const parsed = Array.isArray(value) ? value : JSON.parse(value);
+  //       values = Array.isArray(parsed)
+  //         ? parsed
+  //             .map((v) => (v !== null && v !== undefined ? String(v) : null))
+  //             .filter(Boolean)
+  //         : [String(parsed)];
+  //     } catch {
+  //       values = [String(value)];
+  //     }
+
+  //     if (!values.length) continue;
+
+  //     switch (key) {
+  //       case 'name':
+  //         where.AND.push({
+  //           OR: values.flatMap((v) => [
+  //             { first_name: { contains: v, mode: 'insensitive' } },
+  //             { last_name: { contains: v, mode: 'insensitive' } },
+  //           ]),
+  //         });
+  //         break;
+  //       default:
+  //         where.AND.push({
+  //           OR: values.map((v) => ({
+  //             [key]: { contains: v, mode: 'insensitive' },
+  //           })),
+  //         });
+  //     }
+  //   }
+
+  //   if (where.AND.length === 0) delete where.AND;
+
+  //   // 🔹 Sorting
+  //   const sortBy = query.sortBy || 'created_at';
+  //   const order =
+  //     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+  //       ? (query.order.toLowerCase() as Prisma.SortOrder)
+  //       : 'desc';
+  //   const orderBy = { [sortBy]: order };
+
+  //   const delegate: any = (this.prisma as any)[model];
+
+  //   // --- Numeric filters ---
+  //   const minEmp = query.min_employee ? Number(query.min_employee) : null;
+  //   const maxEmp = query.max_employee ? Number(query.max_employee) : null;
+  //   const minRev = query.min_annual_revenue
+  //     ? Number(query.min_annual_revenue)
+  //     : null;
+  //   const maxRev = query.max_annual_revenue
+  //     ? Number(query.max_annual_revenue)
+  //     : null;
+
+  //   // --- Fetch all matching rows first (without numeric filtering) ---
+  //   const allData = await delegate.findMany({
+  //     where,
+  //     orderBy,
+  //   });
+
+  //   // --- Apply numeric filtering in JS ---
+  //   let filteredData = allData;
+  //   if (
+  //     minEmp !== null ||
+  //     maxEmp !== null ||
+  //     minRev !== null ||
+  //     maxRev !== null
+  //   ) {
+  //     filteredData = allData.filter((row: any) => {
+  //       const emp = Number(row.employees ?? 0);
+  //       const rev = Number(row.annual_revenue ?? 0);
+
+  //       if (minEmp !== null && emp < minEmp) return false;
+  //       if (maxEmp !== null && emp > maxEmp) return false;
+
+  //       if (minRev !== null && rev < minRev) return false;
+  //       if (maxRev !== null && rev > maxRev) return false;
+
+  //       return true;
+  //     });
+  //   }
+
+  //   const newTotal = filteredData.length;
+
+  //   // --- Paginate filtered data ---
+  //   const paginatedData = filteredData.slice(skip, skip + limit);
+
+  //   return {
+  //     success: true,
+  //     message: 'Data fetched successfully',
+  //     data: paginatedData,
+  //     meta: {
+  //       total: newTotal,
+  //       page,
+  //       limit,
+  //       pages: Math.ceil(newTotal / limit),
+  //     },
+  //     access: 'authorized',
+  //   };
+  // }
+
+  private async ApolloLead(
+    model: 'apolloLead',
+    query: Record<string, any>,
+    user: any,
+  ) {
+    // 🔹 Pagination setup
+    const page = Number(query.page) > 0 ? Number(query.page) : 1;
+    const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
+    const skip = (page - 1) * limit;
+
+    const where: any = { deleted_at: null };
+    where.AND = [];
+
+    // 🔹 Dynamic filters (non-range)
+    for (const key of Object.keys(query)) {
+      if (
+        [
+          'page',
+          'limit',
+          'sortBy',
+          'order',
+          'q',
+          'min_employee',
+          'max_employee',
+          'min_annual_revenue',
+          'max_annual_revenue',
+        ].includes(key)
+      )
+        continue;
+
+      const value = query[key];
+      if (value === undefined || value === null) continue;
+
+      // 🔥 এখানে পরিবর্তন করলাম → JSON parse safe করা
+      let values: string[] = [];
+      try {
+        const parsed = Array.isArray(value) ? value : JSON.parse(value);
+        values = Array.isArray(parsed)
+          ? parsed
+              .map((v) => (v !== null && v !== undefined ? String(v) : null))
+              .filter(Boolean)
+          : [String(parsed)];
+      } catch {
+        values = [String(value)];
+      }
+
+      if (!values.length) continue;
+
+      switch (key) {
+        case 'name':
+          where.AND.push({
+            OR: values.flatMap((v) => [
+              { first_name: { contains: v, mode: 'insensitive' } },
+              { last_name: { contains: v, mode: 'insensitive' } },
+            ]),
+          });
+          break;
+
+        default:
+          where.AND.push({
+            OR: values.map((v) => ({
+              [key]: { contains: v, mode: 'insensitive' },
+            })),
+          });
+      }
     }
 
-    if (!values.length) continue;
+    if (where.AND.length === 0) delete where.AND;
 
-    switch (key) {
-      case 'name':
-        where.AND.push({
-          OR: values.flatMap((v) => [
-            { first_name: { contains: v, mode: 'insensitive' } },
-            { last_name: { contains: v, mode: 'insensitive' } },
-          ]),
-        });
-        break;
-      default:
-        where.AND.push({
-          OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
-        });
-    }
-  }
+    // 🔹 Sorting
+    const sortBy = query.sortBy || 'created_at';
+    const order =
+      query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+        ? (query.order.toLowerCase() as Prisma.SortOrder)
+        : 'desc';
+    const orderBy = { [sortBy]: order };
 
-  if (where.AND.length === 0) delete where.AND;
+    const delegate: any = (this.prisma as any)[model];
 
-  // 🔹 Sorting
-  const sortBy = query.sortBy || 'created_at';
-  const order =
-    query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-      ? (query.order.toLowerCase() as Prisma.SortOrder)
-      : 'desc';
-  const orderBy = { [sortBy]: order };
+    // --- Numeric filters ---
+    const minEmp = query.min_employee ? Number(query.min_employee) : null;
+    const maxEmp = query.max_employee ? Number(query.max_employee) : null;
+    const minRev = query.min_annual_revenue
+      ? Number(query.min_annual_revenue)
+      : null;
+    const maxRev = query.max_annual_revenue
+      ? Number(query.max_annual_revenue)
+      : null;
 
-  const delegate: any = (this.prisma as any)[model];
+    // ------------------------------------------------------------------------------------
+    // 🔥 এখানে বড় পরিবর্তন
+    // 🔥 FULL SELECT REMOVE করে দিয়েছি কারণ corrupted UTF-8 field crash করছিল
+    // 🔥 শুধুমাত্র প্রয়োজনীয় ফিল্ড select করা হবে → Prisma error আর হবে না
+    // ------------------------------------------------------------------------------------
 
-  // --- Numeric filters ---
-  const minEmp = query.min_employee ? Number(query.min_employee) : null;
-  const maxEmp = query.max_employee ? Number(query.max_employee) : null;
-  const minRev = query.min_annual_revenue ? Number(query.min_annual_revenue) : null;
-  const maxRev = query.max_annual_revenue ? Number(query.max_annual_revenue) : null;
+    // 🔥 এখানে পুরো ApolloLead model এর সব ফিল্ড select করা হয়েছে
+    const allData = await delegate.findMany({
+      where,
+      orderBy,
+      select: {
+        // 🔥 এই লাইনে পরিবর্তন করা হয়েছে: সব ফিল্ড explicitly যোগ করা হয়েছে
+        id: true,
+        first_name: true,
+        last_name: true,
+        title: true,
+        company_name: true,
+        company_name_for_emails: true,
+        email: true,
+        email_status: true,
+        primary_email_source: true,
+        primary_email_verification_source: true,
+        email_confidence: true,
+        primary_email_catch_all_status: true,
+        primary_email_last_verified_at: true,
+        seniority: true,
+        departments: true,
+        contact_owner: true,
+        work_direct_phone: true,
+        home_phone: true,
+        mobile_phone: true,
+        corporate_phone: true,
+        other_phone: true,
+        stage: true,
+        lists: true,
+        last_contacted: true,
+        account_owner: true,
+        employees: true,
+        industry: true,
+        keywords: true,
+        person_linkedin_url: true,
+        website: true,
+        company_uinkedin_url: true,
+        facebook_url: true,
+        twitter_url: true,
+        city: true,
+        state: true,
+        country: true,
+        company_address: true,
+        company_city: true,
+        company_state: true,
+        company_country: true,
+        company_phone: true,
+        technologies: true,
+        annual_revenue: true,
+        total_funding: true,
+        latest_funding: true,
+        latest_funding_amount: true,
+        last_raised_at: true,
+        subsidiary_of: true,
+        email_sent: true,
+        email_open: true,
+        email_bounced: true,
+        replied: true,
+        demoed: true,
+        number_of_retail_locations: true,
+        apollo_contact_id: true,
+        apollo_account_id: true,
+        secondary_email: true,
+        secondary_email_source: true,
+        secondary_email_status: true,
+        secondary_email_verification_source: true,
+        tertiary_email: true,
+        tertiary_email_source: true,
+        tertiary_email_status: true,
+        tertiary_email_verification_source: true,
+        created_at: true,
+        updated_at: true,
+        deleted_at: true,
+        userId: true,
 
-  // --- Fetch all matching rows first (without numeric filtering) ---
-  const allData = await delegate.findMany({
-    where,
-    orderBy,
-  });
-
-  // --- Apply numeric filtering in JS ---
-  let filteredData = allData;
-  if (minEmp !== null || maxEmp !== null || minRev !== null || maxRev !== null) {
-    filteredData = allData.filter((row: any) => {
-      const emp = Number(row.employees ?? 0);
-      const rev = Number(row.annual_revenue ?? 0);
-
-      if (minEmp !== null && emp < minEmp) return false;
-      if (maxEmp !== null && emp > maxEmp) return false;
-
-      if (minRev !== null && rev < minRev) return false;
-      if (maxRev !== null && rev > maxRev) return false;
-
-      return true;
+        // relation field
+        user: true, // 🔥 এই লাইন যুক্ত করা হয়েছে — relation fetch প্রয়োজন হলে পাবে
+      },
     });
-  }
 
-  const newTotal = filteredData.length;
+// --- Apply numeric filtering in JS ---
+let filteredData = allData;
 
-  // --- Paginate filtered data ---
-  const paginatedData = filteredData.slice(skip, skip + limit);
+if (minEmp !== null || maxEmp !== null || minRev !== null || maxRev !== null) {
+  filteredData = allData.filter((row: any) => {
 
-  return {
-    success: true,
-    message: 'Data fetched successfully',
-    data: paginatedData,
-    meta: {
-      total: newTotal,
-      page,
-      limit,
-      pages: Math.ceil(newTotal / limit),
-    },
-    access: 'authorized',
-  };
+
+    if (
+      row.employees === null ||
+      row.employees === undefined ||
+      row.employees === '' ||
+      row.annual_revenue === null ||
+      row.annual_revenue === undefined ||
+      row.annual_revenue === ''
+    ) {
+      return false;
+    }
+
+
+    const emp = Number(row.employees);
+    const rev = Number(row.annual_revenue);
+
+    if (isNaN(emp) || isNaN(rev)) {
+      return false;
+    }
+
+    // 🔥 এখন filter apply হচ্ছে
+    if (minEmp !== null && emp < minEmp) return false;
+    if (maxEmp !== null && emp > maxEmp) return false;
+
+    if (minRev !== null && rev < minRev) return false;
+    if (maxRev !== null && rev > maxRev) return false;
+
+    return true;
+  });
 }
 
 
+    const newTotal = filteredData.length;
 
+    // --- Paginate filtered data ---
+    const paginatedData = filteredData.slice(skip, skip + limit);
+
+    return {
+      success: true,
+      message: 'Data fetched successfully',
+      data: paginatedData,
+      meta: {
+        total: newTotal,
+        page,
+        limit,
+        pages: Math.ceil(newTotal / limit),
+      },
+      access: 'authorized',
+    };
+  }
 
   // ======================old code =======================
 
@@ -2173,9 +2415,8 @@ private async ApolloLead(
     const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
     const skip = (page - 1) * limit;
 
-    const where: any = { AND: [] };
+    const where: any = { AND: [] }; // 🔹 Free text search (q)
 
-    // 🔹 Free text search (q)
     if (query.q) {
       const search = String(query.q).trim();
       where.AND.push({
@@ -2222,11 +2463,10 @@ private async ApolloLead(
           },
         ],
       });
-    }
+    } // 🔹 Dynamic filters (Updated for Multi-Select)
 
-    // 🔹 Dynamic filters
     for (const key of Object.keys(query)) {
-      // FIX: 'location' has been removed from the skip list, allowing it to be processed.
+      // যে key গুলোকে skip করা হবে
       if (
         [
           'page',
@@ -2246,30 +2486,47 @@ private async ApolloLead(
 
       let values: string[] = [];
       try {
+        // Value যদি একটি অ্যারে হয় বা JSON স্ট্রিং হয়, তবে সেটি পার্স করার চেষ্টা করা হচ্ছে
         values = Array.isArray(value) ? value : JSON.parse(value);
         if (!Array.isArray(values)) values = [String(value)];
       } catch {
+        // পার্স না হলে, সিঙ্গেল স্ট্রিং হিসেবে ধরা হচ্ছে
         values = [String(value)];
-      }
+      } // খালি ভ্যালুগুলো বাদ দেওয়া
 
-      if (key === 'location') {
-        const phrase = values.join(' '); // "Greater Oxford Area"
+      const filterValues = values
+        .map((v) => String(v).trim())
+        .filter((v) => v.length > 0);
 
-        where.AND.push({
-          OR: [
-            { lead_location: { contains: phrase, mode: 'insensitive' } },
-            { location: { contains: phrase, mode: 'insensitive' } },
-          ],
-        });
+      if (filterValues.length === 0) continue;
+
+      // 🚨 প্রধান পরিবর্তন: lead_location এবং অন্যান্য মাল্টি-সিলেক্ট ফিল্ডের জন্য লজিক
+      if (
+        key === 'lead_location' ||
+        key === 'location' ||
+        key ===
+          'lead_divison' /* আপনার অন্যান্য মাল্টি-সিলেক্ট ফিল্ড এখানে যোগ করুন */
+      ) {
+        // lead_location: যদি একাধিক ভ্যালু থাকে, তবে যেকোন একটি ভ্যালুর সাথে ম্যাচ হলেই হবে (OR)
+        const locationFilters = filterValues.map((v) => ({
+          [key]: { contains: v, mode: 'insensitive' },
+        }));
+
+        if (locationFilters.length > 0) {
+          where.AND.push({ OR: locationFilters });
+        }
       } else {
+        // অন্যান্য সিঙ্গেল-সিলেক্ট বা ফিল্ড, যেখানে একটি কলামে একটির বেশি ভ্যালু আশা করা হয় না
+        // এখানেও OR লজিক ব্যবহার করা হচ্ছে (এটি ধরে নেওয়া হচ্ছে যে মাল্টি-সিলেক্টের জন্য ব্যবহৃত হচ্ছে)
         where.AND.push({
-          OR: values.map((v) => ({
+          OR: filterValues.map((v) => ({
             [key]: { contains: v, mode: 'insensitive' },
           })),
         });
       }
-    }
+    } // end of dynamic filters loop
     // 🔹 Email status filter
+
     if (query.email) {
       if (query.email === 'notAvailable') {
         where.AND.push({
@@ -2282,9 +2539,8 @@ private async ApolloLead(
       }
     }
 
-    if (where.AND.length === 0) delete where.AND;
+    if (where.AND.length === 0) delete where.AND; // 🔹 Sorting
 
-    // 🔹 Sorting
     const sortBy = query.sortBy || 'created_at';
     const order =
       query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
@@ -2292,9 +2548,8 @@ private async ApolloLead(
         : Prisma.SortOrder.desc;
     const orderBy = { [sortBy]: order };
 
-    const delegate = (this.prisma as any)[model];
+    const delegate = (this.prisma as any)[model]; // 🔹 Fetch data with pagination
 
-    // 🔹 Fetch data with pagination
     const data = await delegate.findMany({
       where,
       take: limit,
@@ -2594,9 +2849,7 @@ private async ApolloLead(
       });
     }
 
-    // 🔹 Dynamic filters
     for (const key of Object.keys(query)) {
-      // FIX: 'location' is now skipped here so it can be handled separately below.
       if (
         [
           'page',
@@ -2629,30 +2882,59 @@ private async ApolloLead(
       });
     }
 
-    // 🎯 LOCATION FIX: Handle pipe-separated location values
+    // ---------------------------
+    // FIXED & CLEAN Location Filter
+    // ---------------------------
+    // FINAL FIXED LOCATION FILTER
     if (query.location) {
-      let locationValues: string[];
-      const locationQueryValue = String(query.location);
+      let raw = query.location;
+      let locations: string[] = [];
 
-      // 1. Split by pipe '|' (which is %7C in the URL) to get multiple locations
-      if (locationQueryValue.includes('|')) {
-        locationValues = locationQueryValue.split('|');
+      if (Array.isArray(raw)) {
+        locations = raw;
+      } else if (typeof raw === 'string' && raw.includes(',')) {
+        locations = raw.split(',').map((v) => v.trim());
+      } else if (
+        typeof raw === 'string' &&
+        raw.startsWith('[') &&
+        raw.endsWith(']')
+      ) {
+        locations = JSON.parse(raw);
       } else {
-        // Handle single location value
-        locationValues = [locationQueryValue];
+        locations = [raw.trim()];
       }
 
-      // 2. Map and clean each value, replacing '+' with space
-      const formattedLocations = locationValues.map((v) =>
-        v.trim().replace(/\+/g, ' '),
-      );
+      locations = locations.filter((v) => v.length > 0);
 
-      // 3. Add the OR filter for all formatted locations
+      // IMPORTANT: OR condition — not AND
       where.AND.push({
-        OR: formattedLocations.map((locationName) => ({
-          location: { contains: locationName, mode: 'insensitive' },
+        OR: locations.map((loc) => ({
+          location: { contains: loc, mode: 'insensitive' },
         })),
       });
+    }
+
+    if (query.linkedin_id) {
+      let urls: string[] = [];
+
+      // Check if linkedin_id is an array, or string, and split it correctly
+      if (Array.isArray(query.linkedin_id)) {
+        urls = query.linkedin_id.map((url) => url.trim());
+      } else if (typeof query.linkedin_id === 'string') {
+        // If it's a string, check for commas and split
+        urls = query.linkedin_id.split(',').map((url) => url.trim());
+      }
+
+      console.log('Cleaned LinkedIn URLs:', urls);
+
+      // Add 'OR' conditions for each LinkedIn URL
+      if (urls.length > 0) {
+        where.AND.push({
+          OR: urls.map((url) => ({
+            linkedin_id: { contains: url, mode: 'insensitive' },
+          })),
+        });
+      }
     }
 
     if (where.AND.length === 0) {
@@ -2667,7 +2949,6 @@ private async ApolloLead(
         : Prisma.SortOrder.desc;
     const orderBy = { [sortBy]: order };
 
-    // Model delegate for querying
     const delegate: {
       findMany: (args?: any) => Promise<any[]>;
       count: (args?: any) => Promise<number>;
