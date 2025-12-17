@@ -1212,6 +1212,8 @@ export class LeadDataService {
     // --- Paginate filtered data ---
     const paginatedData = filteredData.slice(skip, skip + limit);
 
+    console.log(`ApolloLead: total after filters = ${newTotal}, returning ${paginatedData.length} rows for page ${page}`);
+
     return {
       success: true,
       message: 'Data fetched successfully',
