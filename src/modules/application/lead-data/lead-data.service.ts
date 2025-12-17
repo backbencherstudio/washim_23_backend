@@ -1517,7 +1517,7 @@ export class LeadDataService {
   //   };
   // }
 
-  private async ApolloLead(
+   private async ApolloLead(
     model: 'apolloLead',
     query: Record<string, any>,
     user: any,
@@ -1550,7 +1550,7 @@ export class LeadDataService {
       const value = query[key];
       if (value === undefined || value === null) continue;
 
-      // 🔥 এখানে পরিবর্তন করলাম → JSON parse safe করা
+      // Parse value into array of strings safely
       let values: string[] = [];
       try {
         const parsed = Array.isArray(value) ? value : JSON.parse(value);
@@ -1574,7 +1574,6 @@ export class LeadDataService {
             ]),
           });
           break;
-
         default:
           where.AND.push({
             OR: values.map((v) => ({
@@ -1606,129 +1605,85 @@ export class LeadDataService {
       ? Number(query.max_annual_revenue)
       : null;
 
-    // ------------------------------------------------------------------------------------
-    // 🔥 এখানে বড় পরিবর্তন
-    // 🔥 FULL SELECT REMOVE করে দিয়েছি কারণ corrupted UTF-8 field crash করছিল
-    // 🔥 শুধুমাত্র প্রয়োজনীয় ফিল্ড select করা হবে → Prisma error আর হবে না
-    // ------------------------------------------------------------------------------------
+    // --- Fetch all matching rows with error handling for corrupted data ---
+    let allData: any[] = [];
+    try {
+      allData = await delegate.findMany({
+        where,
+        orderBy,
+      });
+    } catch (err) {
+      // Handle corrupted UTF-8 data error
+      if (err.message?.includes('Failed to convert') || err.code === 'GenericFailure') {
+        this.logger.warn('Prisma fetch failed due to invalid UTF-8 data. Using raw query fallback...');
+        
+        // Fallback: Use raw SQL query with text sanitization
+        const orderDirection = order.toUpperCase();
+        const safeSort = ['created_at', 'updated_at', 'first_name', 'last_name', 'company_name', 'email'].includes(sortBy) 
+          ? sortBy 
+          : 'created_at';
+        
+        try {
+          allData = await this.prisma.$queryRawUnsafe(`
+            SELECT * FROM "ApolloLead" 
+            WHERE deleted_at IS NULL 
+            ORDER BY "${safeSort}" ${orderDirection}
+          `);
+          
+          // Sanitize string fields to remove invalid characters
+          allData = allData.map((row: any) => {
+            const sanitized = { ...row };
+            for (const key of Object.keys(sanitized)) {
+              if (typeof sanitized[key] === 'string') {
+                // Remove NULL bytes and invalid UTF-8 control characters
+                sanitized[key] = sanitized[key]
+                  .replace(/\0/g, '')
+                  .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+              }
+            }
+            return sanitized;
+          });
+        } catch (rawErr) {
+          this.logger.error('Raw query also failed:', rawErr.message);
+          throw new BadRequestException('Database contains corrupted data. Please clean the ApolloLead table.');
+        }
+      } else {
+        throw err;
+      }
+    }
 
-    // 🔥 এখানে পুরো ApolloLead model এর সব ফিল্ড select করা হয়েছে
-    const allData = await delegate.findMany({
-      where,
-      orderBy,
-      select: {
-        // 🔥 এই লাইনে পরিবর্তন করা হয়েছে: সব ফিল্ড explicitly যোগ করা হয়েছে
-        id: true,
-        first_name: true,
-        last_name: true,
-        title: true,
-        company_name: true,
-        company_name_for_emails: true,
-        email: true,
-        email_status: true,
-        primary_email_source: true,
-        primary_email_verification_source: true,
-        email_confidence: true,
-        primary_email_catch_all_status: true,
-        primary_email_last_verified_at: true,
-        seniority: true,
-        departments: true,
-        contact_owner: true,
-        work_direct_phone: true,
-        home_phone: true,
-        mobile_phone: true,
-        corporate_phone: true,
-        other_phone: true,
-        stage: true,
-        lists: true,
-        last_contacted: true,
-        account_owner: true,
-        employees: true,
-        industry: true,
-        keywords: true,
-        person_linkedin_url: true,
-        website: true,
-        company_uinkedin_url: true,
-        facebook_url: true,
-        twitter_url: true,
-        city: true,
-        state: true,
-        country: true,
-        company_address: true,
-        company_city: true,
-        company_state: true,
-        company_country: true,
-        company_phone: true,
-        technologies: true,
-        annual_revenue: true,
-        total_funding: true,
-        latest_funding: true,
-        latest_funding_amount: true,
-        last_raised_at: true,
-        subsidiary_of: true,
-        email_sent: true,
-        email_open: true,
-        email_bounced: true,
-        replied: true,
-        demoed: true,
-        number_of_retail_locations: true,
-        apollo_contact_id: true,
-        apollo_account_id: true,
-        secondary_email: true,
-        secondary_email_source: true,
-        secondary_email_status: true,
-        secondary_email_verification_source: true,
-        tertiary_email: true,
-        tertiary_email_source: true,
-        tertiary_email_status: true,
-        tertiary_email_verification_source: true,
-        created_at: true,
-        updated_at: true,
-        deleted_at: true,
-        userId: true,
-
-        // relation field
-        user: true, // 🔥 এই লাইন যুক্ত করা হয়েছে — relation fetch প্রয়োজন হলে পাবে
-      },
-    });
-
-// --- Apply numeric filtering in JS ---
-let filteredData = allData;
-
-if (minEmp !== null || maxEmp !== null || minRev !== null || maxRev !== null) {
-  filteredData = allData.filter((row: any) => {
-
-
+    // --- Apply numeric filtering in JS ---
+    let filteredData = allData;
     if (
-      row.employees === null ||
-      row.employees === undefined ||
-      row.employees === '' ||
-      row.annual_revenue === null ||
-      row.annual_revenue === undefined ||
-      row.annual_revenue === ''
+      minEmp !== null ||
+      maxEmp !== null ||
+      minRev !== null ||
+      maxRev !== null
     ) {
-      return false;
+      filteredData = allData.filter((row: any) => {
+        // Parse employees - handle string formats like "100", "1000", or numeric
+        let emp = 0;
+        if (row.employees) {
+          const empStr = String(row.employees).replace(/[^\d]/g, '');
+          emp = empStr ? Number(empStr) : 0;
+        }
+
+        // Parse annual_revenue - handle string formats
+        let rev = 0;
+        if (row.annual_revenue) {
+          const revStr = String(row.annual_revenue).replace(/[^\d]/g, '');
+          rev = revStr ? Number(revStr) : 0;
+        }
+
+        if (minEmp !== null && emp < minEmp) return false;
+        if (maxEmp !== null && emp > maxEmp) return false;
+
+        if (minRev !== null && rev < minRev) return false;
+        if (maxRev !== null && rev > maxRev) return false;
+
+        return true;
+      });
     }
-
-
-    const emp = Number(row.employees);
-    const rev = Number(row.annual_revenue);
-
-    if (isNaN(emp) || isNaN(rev)) {
-      return false;
-    }
-
-    // 🔥 এখন filter apply হচ্ছে
-    if (minEmp !== null && emp < minEmp) return false;
-    if (maxEmp !== null && emp > maxEmp) return false;
-
-    if (minRev !== null && rev < minRev) return false;
-    if (maxRev !== null && rev > maxRev) return false;
-
-    return true;
-  });
-}
-
 
     const newTotal = filteredData.length;
 
