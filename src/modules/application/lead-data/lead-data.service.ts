@@ -1596,14 +1596,14 @@ export class LeadDataService {
     const delegate: any = (this.prisma as any)[model];
 
     // --- Numeric filters ---
-    const minEmp = query.min_employee ? Number(query.min_employee) : null;
-    const maxEmp = query.max_employee ? Number(query.max_employee) : null;
-    const minRev = query.min_annual_revenue
-      ? Number(query.min_annual_revenue)
-      : null;
-    const maxRev = query.max_annual_revenue
-      ? Number(query.max_annual_revenue)
-      : null;
+    // const minEmp = query.min_employee ? Number(query.min_employee) : null;
+    // const maxEmp = query.max_employee ? Number(query.max_employee) : null;
+    // const minRev = query.min_annual_revenue
+    //   ? Number(query.min_annual_revenue)
+    //   : null;
+    // const maxRev = query.max_annual_revenue
+    //   ? Number(query.max_annual_revenue)
+    //   : null;
 
     // --- Fetch all matching rows with error handling for corrupted data ---
     let allData: any[] = [];
@@ -1654,36 +1654,36 @@ export class LeadDataService {
 
     // --- Apply numeric filtering in JS ---
     let filteredData = allData;
-    if (
-      minEmp !== null ||
-      maxEmp !== null ||
-      minRev !== null ||
-      maxRev !== null
-    ) {
-      filteredData = allData.filter((row: any) => {
-        // Parse employees - handle string formats like "100", "1000", or numeric
-        let emp = 0;
-        if (row.employees) {
-          const empStr = String(row.employees).replace(/[^\d]/g, '');
-          emp = empStr ? Number(empStr) : 0;
-        }
+    // if (
+    //   minEmp !== null ||
+    //   maxEmp !== null ||
+    //   minRev !== null ||
+    //   maxRev !== null
+    // ) {
+    //   filteredData = allData.filter((row: any) => {
+    //     // Parse employees - handle string formats like "100", "1000", or numeric
+    //     let emp = 0;
+    //     if (row.employees) {
+    //       const empStr = String(row.employees).replace(/[^\d]/g, '');
+    //       emp = empStr ? Number(empStr) : 0;
+    //     }
 
-        // Parse annual_revenue - handle string formats
-        let rev = 0;
-        if (row.annual_revenue) {
-          const revStr = String(row.annual_revenue).replace(/[^\d]/g, '');
-          rev = revStr ? Number(revStr) : 0;
-        }
+    //     // Parse annual_revenue - handle string formats
+    //     let rev = 0;
+    //     if (row.annual_revenue) {
+    //       const revStr = String(row.annual_revenue).replace(/[^\d]/g, '');
+    //       rev = revStr ? Number(revStr) : 0;
+    //     }
 
-        if (minEmp !== null && emp < minEmp) return false;
-        if (maxEmp !== null && emp > maxEmp) return false;
+    //     if (minEmp !== null && emp < minEmp) return false;
+    //     if (maxEmp !== null && emp > maxEmp) return false;
 
-        if (minRev !== null && rev < minRev) return false;
-        if (maxRev !== null && rev > maxRev) return false;
+    //     if (minRev !== null && rev < minRev) return false;
+    //     if (maxRev !== null && rev > maxRev) return false;
 
-        return true;
-      });
-    }
+    //     return true;
+    //   });
+    // }
 
     const newTotal = filteredData.length;
 
