@@ -1025,7 +1025,210 @@ export class LeadDataService {
     return apolloData;
   }
 
-  //   private async ApolloLead(
+  private async ApolloLead(
+    model: 'apolloLead',
+    query: Record<string, any>,
+    user: any,
+  ) {
+    // 🔹 Pagination setup
+    const page = Number(query.page) > 0 ? Number(query.page) : 1;
+    const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
+    const skip = (page - 1) * limit;
+
+    const where: any = { deleted_at: null };
+    where.AND = [];
+
+    // 🔹 Dynamic filters (non-range)
+    for (const key of Object.keys(query)) {
+      if (
+        [
+          'page',
+          'limit',
+          'sortBy',
+          'order',
+          'q',
+          'min_employee',
+          'max_employee',
+          'min_annual_revenue',
+          'max_annual_revenue',
+        ].includes(key)
+      )
+        continue;
+
+      const value = query[key];
+      if (value === undefined || value === null) continue;
+
+      // Parse value into array of strings safely
+      let values: string[] = [];
+      try {
+        const parsed = Array.isArray(value) ? value : JSON.parse(value);
+        values = Array.isArray(parsed)
+          ? parsed
+              .map((v) => (v !== null && v !== undefined ? String(v) : null))
+              .filter(Boolean)
+          : [String(parsed)];
+      } catch {
+        values = [String(value)];
+      }
+
+      if (!values.length) continue;
+
+      switch (key) {
+        case 'name':
+          where.AND.push({
+            OR: values.flatMap((v) => [
+              { first_name: { contains: v, mode: 'insensitive' } },
+              { last_name: { contains: v, mode: 'insensitive' } },
+            ]),
+          });
+          break;
+        default:
+          where.AND.push({
+            OR: values.map((v) => ({
+              [key]: { contains: v, mode: 'insensitive' },
+            })),
+          });
+      }
+    }
+
+    if (where.AND.length === 0) delete where.AND;
+
+    // 🔹 Sorting
+    const sortBy = query.sortBy || 'created_at';
+    const order =
+      query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
+        ? (query.order.toLowerCase() as Prisma.SortOrder)
+        : 'desc';
+    const orderBy = { [sortBy]: order };
+
+    const delegate: any = (this.prisma as any)[model];
+
+    // --- Numeric filters ---
+    const minEmp = query.min_employee ? Number(query.min_employee) : null;
+    const maxEmp = query.max_employee ? Number(query.max_employee) : null;
+    const minRev = query.min_annual_revenue
+      ? Number(query.min_annual_revenue)
+      : null;
+    const maxRev = query.max_annual_revenue
+      ? Number(query.max_annual_revenue)
+      : null;
+
+    // --- Fetch all matching rows with error handling for corrupted data ---
+    let allData: any[] = [];
+    try {
+      allData = await delegate.findMany({
+        where,
+        orderBy,
+      });
+    } catch (err) {
+      // Handle corrupted UTF-8 data error
+      if (
+        err.message?.includes('Failed to convert') ||
+        err.code === 'GenericFailure'
+      ) {
+        this.logger.warn(
+          'Prisma fetch failed due to invalid UTF-8 data. Using raw query fallback...',
+        );
+
+        // Fallback: Use raw SQL query with text sanitization
+        const orderDirection = order.toUpperCase();
+        const safeSort = [
+          'created_at',
+          'updated_at',
+          'first_name',
+          'last_name',
+          'company_name',
+          'email',
+        ].includes(sortBy)
+          ? sortBy
+          : 'created_at';
+
+        try {
+          allData = await this.prisma.$queryRawUnsafe(`
+            SELECT * FROM "ApolloLead" 
+            WHERE deleted_at IS NULL 
+            ORDER BY "${safeSort}" ${orderDirection}
+          `);
+
+          // Sanitize string fields to remove invalid characters
+          allData = allData.map((row: any) => {
+            const sanitized = { ...row };
+            for (const key of Object.keys(sanitized)) {
+              if (typeof sanitized[key] === 'string') {
+                // Remove NULL bytes and invalid UTF-8 control characters
+                sanitized[key] = sanitized[key]
+                  .replace(/\0/g, '')
+                  .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+              }
+            }
+            return sanitized;
+          });
+        } catch (rawErr) {
+          this.logger.error('Raw query also failed:', rawErr.message);
+          throw new BadRequestException(
+            'Database contains corrupted data. Please clean the ApolloLead table.',
+          );
+        }
+      } else {
+        throw err;
+      }
+    }
+
+    // --- Apply numeric filtering in JS ---
+    let filteredData = allData;
+    if (
+      minEmp !== null ||
+      maxEmp !== null ||
+      minRev !== null ||
+      maxRev !== null
+    ) {
+      filteredData = allData.filter((row: any) => {
+        // Parse employees - handle string formats like "100", "1000", or numeric
+        let emp = 0;
+        if (row.employees) {
+          const empStr = String(row.employees).replace(/[^\d]/g, '');
+          emp = empStr ? Number(empStr) : 0;
+        }
+
+        // Parse annual_revenue - handle string formats
+        let rev = 0;
+        if (row.annual_revenue) {
+          const revStr = String(row.annual_revenue).replace(/[^\d]/g, '');
+          rev = revStr ? Number(revStr) : 0;
+        }
+
+        if (minEmp !== null && emp < minEmp) return false;
+        if (maxEmp !== null && emp > maxEmp) return false;
+
+        if (minRev !== null && rev < minRev) return false;
+        if (maxRev !== null && rev > maxRev) return false;
+
+        return true;
+      });
+    }
+
+    const newTotal = filteredData.length;
+
+    // --- Paginate filtered data ---
+    const paginatedData = filteredData.slice(skip, skip + limit);
+
+    return {
+      success: true,
+      message: 'Data fetched successfully',
+      data: paginatedData,
+      meta: {
+        total: newTotal,
+        page,
+        limit,
+        pages: Math.ceil(newTotal / limit),
+      },
+      access: 'authorized',
+    };
+  }
+
+  // ======================old code =======================
+
+  // private async ApolloLead(
   //   model: 'apolloLead',
   //   query: Record<string, any>,
   //   user: any,
@@ -1222,173 +1425,6 @@ export class LeadDataService {
   // ) {
   //   // 🔹 Pagination setup
   //   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  //   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20; // default 20
-  //   const skip = (page - 1) * limit;
-
-  //   const where: any = { deleted_at: null };
-  //   where.AND = [];
-
-  //   // 🔹 Free text search (q)
-  //   if (query.q) {
-  //     const searchTerm = String(query.q).trim();
-  //     where.AND.push({
-  //       OR: [
-  //         { first_name: { contains: searchTerm, mode: 'insensitive' } },
-  //         { last_name: { contains: searchTerm, mode: 'insensitive' } },
-  //         { title: { contains: searchTerm, mode: 'insensitive' } },
-  //         { company_name: { contains: searchTerm, mode: 'insensitive' } },
-  //         { email: { contains: searchTerm, mode: 'insensitive' } },
-  //         { city: { contains: searchTerm, mode: 'insensitive' } },
-  //         { country: { contains: searchTerm, mode: 'insensitive' } },
-  //         { industry: { contains: searchTerm, mode: 'insensitive' } },
-  //         { keywords: { contains: searchTerm, mode: 'insensitive' } },
-  //         { website: { contains: searchTerm, mode: 'insensitive' } },
-  //         { location: { contains: searchTerm, mode: 'insensitive' } },
-  //       ],
-  //     });
-  //   }
-
-  //   // 🔹 Dynamic filters (Non-range filters applied to DB query)
-  //   for (const key of Object.keys(query)) {
-  //     if (
-  //       [
-  //         'page',
-  //         'limit',
-  //         'sortBy',
-  //         'order',
-  //         'q',
-  //         'min_employee',
-  //         'max_employee',
-  //         'min_annual_revenue',
-  //         'max_annual_revenue',
-  //       ].includes(key)
-  //     )
-  //       continue;
-
-  //     const value = query[key];
-  //     if (!value) continue;
-
-  //     let values: string[] = [];
-  //     try {
-  //       values = Array.isArray(value) ? value : JSON.parse(value);
-  //       if (!Array.isArray(values)) values = [String(value)];
-  //     } catch {
-  //       values = [String(value)];
-  //     }
-
-  //     switch (key) {
-  //       case 'name':
-  //         where.AND.push({
-  //           OR: values.flatMap((v) => [
-  //             { first_name: { contains: v, mode: 'insensitive' } },
-  //             { last_name: { contains: v, mode: 'insensitive' } },
-  //           ]),
-  //         });
-  //         break;
-  //       case 'job_titles':
-  //       case 'job_titless':
-  //         where.AND.push({
-  //           OR: values.map((v) => ({ title: { contains: v, mode: 'insensitive' } })),
-  //         });
-  //         break;
-  //       case 'keyword':
-  //         where.AND.push({
-  //           OR: values.map((v) => ({ keywords: { contains: v, mode: 'insensitive' } })),
-  //         });
-  //         break;
-  //       case 'company_linkedin':
-  //         where.AND.push({
-  //           OR: values.map((v) => ({ company_uinkedin_url: { contains: v, mode: 'insensitive' } })),
-  //         });
-  //         break;
-  //       case 'country':
-  //       case 'city':
-  //       case 'state':
-  //       case 'email_status':
-  //       case 'demoed':
-  //         where.AND.push({
-  //           OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
-  //         });
-  //         break;
-  //       default:
-  //         where.AND.push({
-  //           OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
-  //         });
-  //     }
-  //   }
-
-  //   if (where.AND.length === 0) delete where.AND;
-
-  //   const sortBy = query.sortBy || 'created_at';
-  //   const order =
-  //     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-  //       ? (query.order.toLowerCase() as Prisma.SortOrder)
-  //       : Prisma.SortOrder.desc;
-  //   const orderBy = { [sortBy]: order };
-
-  //   const delegate: any = (this.prisma as any)[model];
-
-  //   // --- 🎯 FIX START: Fetch ALL data matching DB filters first ---
-
-  //   // Fetch all leads from the DB that match the DB-based 'where' filters
-  //   const allData = await delegate.findMany({ where, orderBy });
-
-  //   let allFilteredData = allData;
-
-  //   // 🔹 Employee range filter (APPLIED IN MEMORY to calculate TRUE total)
-  //   if (query.min_employee || query.max_employee) {
-  //     const min = Number(query.min_employee) || 0;
-  //     const max = Number(query.max_employee) || 999999;
-  //     allFilteredData = allFilteredData.filter((item) => {
-  //       if (!item.employees) return false;
-  //       // Removes non-digit characters to parse the number
-  //       const num = Number(item.employees.replace(/\D/g, ''));
-  //       return !isNaN(num) && num >= min && num <= max;
-  //     });
-  //   }
-
-  //   // 🔹 Annual revenue range filter (APPLIED IN MEMORY to calculate TRUE total)
-  //   if (query.min_annual_revenue || query.max_annual_revenue) {
-  //     const minR = Number(query.min_annual_revenue) || 0;
-  //     const maxR = Number(query.max_annual_revenue) || 99999999;
-  //     allFilteredData = allFilteredData.filter((item) => {
-  //       if (!item.annual_revenue) return false;
-  //       // Removes non-digit characters to parse the number
-  //       const num = Number(item.annual_revenue.replace(/\D/g, ''));
-  //       return !isNaN(num) && num >= minR && num <= maxR;
-  //     });
-  //   }
-
-  //   // 🏆 Calculate the Correct Total
-  //   const newTotal = allFilteredData.length;
-
-  //   // 🔹 Apply Pagination to the fully filtered data
-  //   const paginatedData = allFilteredData.slice(skip, skip + limit);
-
-  //   // --- FIX END ---
-
-  //   // 🔹 Final return structure
-  //   return {
-  //     success: true,
-  //     message: 'Data fetched successfully',
-  //     data: paginatedData, // Use the correctly paginated and filtered data
-  //     meta: {
-  //       total: newTotal, // Use the correct total count of all filtered items
-  //       page,
-  //       limit,
-  //       pages: Math.ceil(newTotal / limit), // Pages calculated on the correct total
-  //     },
-  //     access: 'authorized',
-  //   };
-  // }
-
-  // private async ApolloLead(
-  //   model: 'apolloLead',
-  //   query: Record<string, any>,
-  //   user: any,
-  // ) {
-  //   // 🔹 Pagination setup
-  //   const page = Number(query.page) > 0 ? Number(query.page) : 1;
   //   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
   //   const skip = (page - 1) * limit;
 
@@ -1470,11 +1506,52 @@ export class LeadDataService {
   //     ? Number(query.max_annual_revenue)
   //     : null;
 
-  //   // --- Fetch all matching rows first (without numeric filtering) ---
-  //   const allData = await delegate.findMany({
-  //     where,
-  //     orderBy,
-  //   });
+  //   // --- Fetch all matching rows with error handling for corrupted data ---
+  //   let allData: any[] = [];
+  //   try {
+  //     allData = await delegate.findMany({
+  //       where,
+  //       orderBy,
+  //     });
+  //   } catch (err) {
+  //     // Handle corrupted UTF-8 data error
+  //     if (err.message?.includes('Failed to convert') || err.code === 'GenericFailure') {
+  //       this.logger.warn('Prisma fetch failed due to invalid UTF-8 data. Using raw query fallback...');
+
+  //       // Fallback: Use raw SQL query with text sanitization
+  //       const orderDirection = order.toUpperCase();
+  //       const safeSort = ['created_at', 'updated_at', 'first_name', 'last_name', 'company_name', 'email'].includes(sortBy)
+  //         ? sortBy
+  //         : 'created_at';
+
+  //       try {
+  //         allData = await this.prisma.$queryRawUnsafe(`
+  //           SELECT * FROM "ApolloLead"
+  //           WHERE deleted_at IS NULL
+  //           ORDER BY "${safeSort}" ${orderDirection}
+  //         `);
+
+  //         // Sanitize string fields to remove invalid characters
+  //         allData = allData.map((row: any) => {
+  //           const sanitized = { ...row };
+  //           for (const key of Object.keys(sanitized)) {
+  //             if (typeof sanitized[key] === 'string') {
+  //               // Remove NULL bytes and invalid UTF-8 control characters
+  //               sanitized[key] = sanitized[key]
+  //                 .replace(/\0/g, '')
+  //                 .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  //             }
+  //           }
+  //           return sanitized;
+  //         });
+  //       } catch (rawErr) {
+  //         this.logger.error('Raw query also failed:', rawErr.message);
+  //         throw new BadRequestException('Database contains corrupted data. Please clean the ApolloLead table.');
+  //       }
+  //     } else {
+  //       throw err;
+  //     }
+  //   }
 
   //   // --- Apply numeric filtering in JS ---
   //   let filteredData = allData;
@@ -1485,8 +1562,19 @@ export class LeadDataService {
   //     maxRev !== null
   //   ) {
   //     filteredData = allData.filter((row: any) => {
-  //       const emp = Number(row.employees ?? 0);
-  //       const rev = Number(row.annual_revenue ?? 0);
+  //       // Parse employees - handle string formats like "100", "1000", or numeric
+  //       let emp = 0;
+  //       if (row.employees) {
+  //         const empStr = String(row.employees).replace(/[^\d]/g, '');
+  //         emp = empStr ? Number(empStr) : 0;
+  //       }
+
+  //       // Parse annual_revenue - handle string formats
+  //       let rev = 0;
+  //       if (row.annual_revenue) {
+  //         const revStr = String(row.annual_revenue).replace(/[^\d]/g, '');
+  //         rev = revStr ? Number(revStr) : 0;
+  //       }
 
   //       if (minEmp !== null && emp < minEmp) return false;
   //       if (maxEmp !== null && emp > maxEmp) return false;
@@ -1514,540 +1602,6 @@ export class LeadDataService {
   //       pages: Math.ceil(newTotal / limit),
   //     },
   //     access: 'authorized',
-  //   };
-  // }
-
-   private async ApolloLead(
-    model: 'apolloLead',
-    query: Record<string, any>,
-    user: any,
-  ) {
-    // 🔹 Pagination setup
-    const page = Number(query.page) > 0 ? Number(query.page) : 1;
-    const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
-    const skip = (page - 1) * limit;
-
-    const where: any = { deleted_at: null };
-    where.AND = [];
-
-    // 🔹 Dynamic filters (non-range)
-    for (const key of Object.keys(query)) {
-      if (
-        [
-          'page',
-          'limit',
-          'sortBy',
-          'order',
-          'q',
-          'min_employee',
-          'max_employee',
-          'min_annual_revenue',
-          'max_annual_revenue',
-        ].includes(key)
-      )
-        continue;
-
-      const value = query[key];
-      if (value === undefined || value === null) continue;
-
-      // Parse value into array of strings safely
-      let values: string[] = [];
-      try {
-        const parsed = Array.isArray(value) ? value : JSON.parse(value);
-        values = Array.isArray(parsed)
-          ? parsed
-              .map((v) => (v !== null && v !== undefined ? String(v) : null))
-              .filter(Boolean)
-          : [String(parsed)];
-      } catch {
-        values = [String(value)];
-      }
-
-      if (!values.length) continue;
-
-      switch (key) {
-        case 'name':
-          where.AND.push({
-            OR: values.flatMap((v) => [
-              { first_name: { contains: v, mode: 'insensitive' } },
-              { last_name: { contains: v, mode: 'insensitive' } },
-            ]),
-          });
-          break;
-        default:
-          where.AND.push({
-            OR: values.map((v) => ({
-              [key]: { contains: v, mode: 'insensitive' },
-            })),
-          });
-      }
-    }
-
-    if (where.AND.length === 0) delete where.AND;
-
-    // 🔹 Sorting
-    const sortBy = query.sortBy || 'created_at';
-    const order =
-      query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-        ? (query.order.toLowerCase() as Prisma.SortOrder)
-        : 'desc';
-    const orderBy = { [sortBy]: order };
-
-    const delegate: any = (this.prisma as any)[model];
-
-    // --- Numeric filters ---
-    // const minEmp = query.min_employee ? Number(query.min_employee) : null;
-    // const maxEmp = query.max_employee ? Number(query.max_employee) : null;
-    // const minRev = query.min_annual_revenue
-    //   ? Number(query.min_annual_revenue)
-    //   : null;
-    // const maxRev = query.max_annual_revenue
-    //   ? Number(query.max_annual_revenue)
-    //   : null;
-
-    // --- Fetch all matching rows with error handling for corrupted data ---
-    let allData: any[] = [];
-    try {
-      allData = await delegate.findMany({
-        where,
-        orderBy,
-      });
-    } catch (err) {
-      // Handle corrupted UTF-8 data error
-      if (err.message?.includes('Failed to convert') || err.code === 'GenericFailure') {
-        this.logger.warn('Prisma fetch failed due to invalid UTF-8 data. Using raw query fallback...');
-        
-        // Fallback: Use raw SQL query with text sanitization
-        const orderDirection = order.toUpperCase();
-        const safeSort = ['created_at', 'updated_at', 'first_name', 'last_name', 'company_name', 'email'].includes(sortBy) 
-          ? sortBy 
-          : 'created_at';
-        
-        try {
-          allData = await this.prisma.$queryRawUnsafe(`
-            SELECT * FROM "ApolloLead" 
-            WHERE deleted_at IS NULL 
-            ORDER BY "${safeSort}" ${orderDirection}
-          `);
-          
-          // Sanitize string fields to remove invalid characters
-          allData = allData.map((row: any) => {
-            const sanitized = { ...row };
-            for (const key of Object.keys(sanitized)) {
-              if (typeof sanitized[key] === 'string') {
-                // Remove NULL bytes and invalid UTF-8 control characters
-                sanitized[key] = sanitized[key]
-                  .replace(/\0/g, '')
-                  .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-              }
-            }
-            return sanitized;
-          });
-        } catch (rawErr) {
-          this.logger.error('Raw query also failed:', rawErr.message);
-          throw new BadRequestException('Database contains corrupted data. Please clean the ApolloLead table.');
-        }
-      } else {
-        throw err;
-      }
-    }
-
-    // --- Apply numeric filtering in JS ---
-    let filteredData = allData;
-    // if (
-    //   minEmp !== null ||
-    //   maxEmp !== null ||
-    //   minRev !== null ||
-    //   maxRev !== null
-    // ) {
-    //   filteredData = allData.filter((row: any) => {
-    //     // Parse employees - handle string formats like "100", "1000", or numeric
-    //     let emp = 0;
-    //     if (row.employees) {
-    //       const empStr = String(row.employees).replace(/[^\d]/g, '');
-    //       emp = empStr ? Number(empStr) : 0;
-    //     }
-
-    //     // Parse annual_revenue - handle string formats
-    //     let rev = 0;
-    //     if (row.annual_revenue) {
-    //       const revStr = String(row.annual_revenue).replace(/[^\d]/g, '');
-    //       rev = revStr ? Number(revStr) : 0;
-    //     }
-
-    //     if (minEmp !== null && emp < minEmp) return false;
-    //     if (maxEmp !== null && emp > maxEmp) return false;
-
-    //     if (minRev !== null && rev < minRev) return false;
-    //     if (maxRev !== null && rev > maxRev) return false;
-
-    //     return true;
-    //   });
-    // }
-
-    const newTotal = filteredData.length;
-
-    // --- Paginate filtered data ---
-    const paginatedData = filteredData.slice(skip, skip + limit);
-
-    return {
-      success: true,
-      message: 'Data fetched successfully',
-      data: paginatedData,
-      meta: {
-        total: newTotal,
-        page,
-        limit,
-        pages: Math.ceil(newTotal / limit),
-      },
-      access: 'authorized',
-    };
-  }
-
-  // ======================old code =======================
-
-  // private async ApolloLead(
-  //   model: 'apolloLead',
-  //   query: Record<string, any>,
-  //   user: any,
-  // ) {
-  //   // Pagination
-  //   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  //   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
-  //   const skip = (page - 1) * limit;
-
-  //   const where: any = { deleted_at: null, AND: [] };
-
-  //   // SAFE JSON PARSE FUNCTION
-  //   const safeToArray = (value: any): string[] => {
-  //     if (value === null || value === undefined) return [];
-
-  //     // Already array
-  //     if (Array.isArray(value)) {
-  //       return value.map((v) => String(v ?? '')).filter((v) => v.length > 0);
-  //     }
-
-  //     // Try parsing JSON
-  //     try {
-  //       const parsed = JSON.parse(value);
-  //       if (Array.isArray(parsed)) {
-  //         return parsed.map((v) => String(v ?? '')).filter((v) => v.length > 0);
-  //       }
-  //       return [String(parsed ?? '')];
-  //     } catch {
-  //       return [String(value ?? '')];
-  //     }
-  //   };
-
-  //   // ========== FREE TEXT SEARCH ==========
-  //   if (query.q) {
-  //     const searchTerm = String(query.q || '').trim();
-  //     if (searchTerm.length > 0) {
-  //       where.AND.push({
-  //         OR: [
-  //           { first_name: { contains: searchTerm, mode: 'insensitive' } },
-  //           { last_name: { contains: searchTerm, mode: 'insensitive' } },
-  //           { title: { contains: searchTerm, mode: 'insensitive' } },
-  //           { company_name: { contains: searchTerm, mode: 'insensitive' } },
-  //           { email: { contains: searchTerm, mode: 'insensitive' } },
-  //           { city: { contains: searchTerm, mode: 'insensitive' } },
-  //           { country: { contains: searchTerm, mode: 'insensitive' } },
-  //           { industry: { contains: searchTerm, mode: 'insensitive' } },
-  //           { keywords: { contains: searchTerm, mode: 'insensitive' } },
-  //           { website: { contains: searchTerm, mode: 'insensitive' } },
-  //           { location: { contains: searchTerm, mode: 'insensitive' } },
-  //         ],
-  //       });
-  //     }
-  //   }
-
-  //   // ========== DYNAMIC FILTERS ==========
-  //   for (const key of Object.keys(query)) {
-  //     if (
-  //       [
-  //         'page',
-  //         'limit',
-  //         'sortBy',
-  //         'order',
-  //         'q',
-  //         'min_employee',
-  //         'max_employee',
-  //         'min_annual_revenue',
-  //         'max_annual_revenue',
-  //       ].includes(key)
-  //     )
-  //       continue;
-
-  //     const rawValue = query[key];
-  //     if (!rawValue) continue;
-
-  //     const values = safeToArray(rawValue);
-  //     if (values.length === 0) continue;
-
-  //     switch (key) {
-  //       case 'name':
-  //         where.AND.push({
-  //           OR: values.flatMap((v) => [
-  //             { first_name: { contains: String(v), mode: 'insensitive' } },
-  //             { last_name: { contains: String(v), mode: 'insensitive' } },
-  //           ]),
-  //         });
-  //         break;
-
-  //       case 'job_titles':
-  //       case 'job_titless':
-  //         where.AND.push({
-  //           OR: values.map((v) => ({
-  //             title: { contains: String(v), mode: 'insensitive' },
-  //           })),
-  //         });
-  //         break;
-
-  //       case 'keyword':
-  //         where.AND.push({
-  //           OR: values.map((v) => ({
-  //             keywords: { contains: String(v), mode: 'insensitive' },
-  //           })),
-  //         });
-  //         break;
-
-  //       case 'company_linkedin':
-  //         where.AND.push({
-  //           OR: values.map((v) => ({
-  //             company_uinkedin_url: { contains: String(v), mode: 'insensitive' },
-  //           })),
-  //         });
-  //         break;
-
-  //       default:
-  //         where.AND.push({
-  //           OR: values.map((v) => ({
-  //             [key]: { contains: String(v), mode: 'insensitive' },
-  //           })),
-  //         });
-  //     }
-  //   }
-
-  //   if (where.AND.length === 0) delete where.AND;
-
-  //   // Sort + order
-  //   const sortBy = query.sortBy || 'created_at';
-  //   const order =
-  //     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-  //       ? (query.order.toLowerCase() as Prisma.SortOrder)
-  //       : Prisma.SortOrder.desc;
-
-  //   const orderBy = { [sortBy]: order };
-
-  //   const delegate: any = (this.prisma as any)[model];
-
-  //   // ========== DB FILTERS (SAFE) ==========
-  //   const allData = await delegate.findMany({
-  //     where,
-  //     orderBy,
-  //   });
-
-  //   let allFilteredData = [...allData];
-
-  //   // ========= EMPLOYEE RANGE FILTER ==========
-  //   if (query.min_employee || query.max_employee) {
-  //     const min = Number(query.min_employee) || 0;
-  //     const max = Number(query.max_employee) || 999999;
-
-  //     allFilteredData = allFilteredData.filter((item) => {
-  //       const emp = item.employees;
-  //       if (!emp || typeof emp !== 'string') return false;
-  //       const num = Number(emp.replace(/\D/g, '')) || 0;
-  //       return num >= min && num <= max;
-  //     });
-  //   }
-
-  //   // ========= ANNUAL REVENUE FILTER ==========
-  //   if (query.min_annual_revenue || query.max_annual_revenue) {
-  //     const min = Number(query.min_annual_revenue) || 0;
-  //     const max = Number(query.max_annual_revenue) || 999999999;
-
-  //     allFilteredData = allFilteredData.filter((item) => {
-  //       const rev = item.annual_revenue;
-  //       if (!rev || typeof rev !== 'string') return false;
-  //       const num = Number(rev.replace(/\D/g, '')) || 0;
-  //       return num >= min && num <= max;
-  //     });
-  //   }
-
-  //   // Total Count
-  //   const newTotal = allFilteredData.length;
-
-  //   // Pagination
-  //   const paginatedData = allFilteredData.slice(skip, skip + limit);
-
-  //   return {
-  //     success: true,
-  //     message: 'Data fetched successfully',
-  //     data: paginatedData,
-  //     meta: {
-  //       total: newTotal,
-  //       page,
-  //       limit,
-  //       pages: Math.ceil(newTotal / limit),
-  //     },
-  //     access: 'authorized',
-  //   };
-  // }
-
-  // private async ApolloLead(
-  //   model: 'apolloLead',
-  //   query: Record<string, any>,
-  //   user: any,
-  // ) {
-  //   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  //   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
-  //   const skip = (page - 1) * limit;
-
-  //   const where: any = { deleted_at: null, AND: [] };
-
-  //   // List of Date fields → never apply contains
-  //   const dateFields = ['created_at', 'updated_at', 'deleted_at'];
-
-  //   // All String fields from ApolloLead model
-  //   const stringFields = [
-  //     "first_name","last_name","title","company_name","company_name_for_emails",
-  //     "email","email_status","primary_email_source",
-  //     "primary_email_verification_source","email_confidence",
-  //     "primary_email_catch_all_status","primary_email_last_verified_at",
-  //     "seniority","departments","contact_owner","work_direct_phone",
-  //     "home_phone","mobile_phone","corporate_phone","other_phone","stage",
-  //     "lists","last_contacted","account_owner","employees","industry",
-  //     "keywords","person_linkedin_url","website","company_uinkedin_url",
-  //     "facebook_url","twitter_url","city","state","country","company_address",
-  //     "company_city","company_state","company_country","company_phone",
-  //     "technologies","annual_revenue","total_funding","latest_funding",
-  //     "latest_funding_amount","last_raised_at","subsidiary_of","email_sent",
-  //     "email_open","email_bounced","replied","demoed",
-  //     "number_of_retail_locations","apollo_contact_id","apollo_account_id",
-  //     "secondary_email","secondary_email_source","secondary_email_status",
-  //     "secondary_email_verification_source","tertiary_email",
-  //     "tertiary_email_source","tertiary_email_status",
-  //     "tertiary_email_verification_source"
-  //   ];
-
-  //   // SAFE JSON PARSER
-  //   const safeToArray = (value: any) => {
-  //     if (!value) return [];
-  //     if (Array.isArray(value)) return value;
-  //     try {
-  //       const p = JSON.parse(value);
-  //       return Array.isArray(p) ? p : [p];
-  //     } catch {
-  //       return [value];
-  //     }
-  //   };
-
-  //   // FREE TEXT SEARCH
-  //   if (query.q) {
-  //     const q = query.q.trim();
-  //     if (q.length > 0) {
-  //       const orFilters = stringFields.map(f => ({
-  //         [f]: { contains: q, mode: 'insensitive' }
-  //       }));
-  //       where.AND.push({ OR: orFilters });
-  //     }
-  //   }
-
-  //   // DYNAMIC FILTERS
-  //   for (const key of Object.keys(query)) {
-  //     if (['page','limit','sortBy','order','q','min_employee','max_employee','min_annual_revenue','max_annual_revenue'].includes(key))
-  //       continue;
-
-  //     const raw = query[key];
-  //     if (!raw) continue;
-
-  //     // Skip Date fields
-  //     if (dateFields.includes(key)) continue;
-
-  //     // Skip unknown fields
-  //     if (!stringFields.includes(key)) continue;
-
-  //     const values = safeToArray(raw);
-
-  //     where.AND.push({
-  //       OR: values.map(v => ({
-  //         [key]: { contains: String(v), mode: 'insensitive' }
-  //       }))
-  //     });
-  //   }
-
-  //   if (where.AND.length === 0) delete where.AND;
-
-  //   // SORT
-  //   const sortBy = query.sortBy || "created_at";
-  //   const order = ['asc','desc'].includes((query.order || '').toLowerCase())
-  //     ? query.order.toLowerCase()
-  //     : 'desc';
-  //   const orderBy = { [sortBy]: order };
-
-  //   const delegate: any = (prisma as any)[model];
-
-  //   // ================== SAFE FETCH ==================
-  //   // Wrap in try-catch to handle corrupted UTF-8
-  //   let allData: any[] = [];
-  //   try {
-  //     allData = await delegate.findMany({
-  //       where,
-  //       orderBy,
-  //     });
-  //   } catch (err) {
-  //     console.error("Prisma fetch failed due to invalid UTF-8. Attempting fallback...");
-
-  //     // Fallback: fetch raw rows and sanitize
-  //     const rawRows: any[] = await prisma.$queryRawUnsafe(`
-  //       SELECT *
-  //       FROM "ApolloLead"
-  //       WHERE deleted_at IS NULL
-  //       ORDER BY "${sortBy}" ${order.toUpperCase()}
-  //     `);
-
-  //     // Sanitize strings
-  //     allData = rawRows.map(row => {
-  //       for (const key of stringFields) {
-  //         if (row[key] && typeof row[key] === 'string') {
-  //           // Remove invalid UTF-8 / NULL bytes
-  //           row[key] = row[key].replace(/[\0-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
-  //         }
-  //       }
-  //       return row;
-  //     });
-  //   }
-
-  //   // EMPLOYEE FILTER
-  //   if (query.min_employee || query.max_employee) {
-  //     const min = Number(query.min_employee) || 0;
-  //     const max = Number(query.max_employee) || 999999;
-  //     allData = allData.filter(item => {
-  //       const num = Number((item.employees || "").replace(/\D/g, "")) || 0;
-  //       return num >= min && num <= max;
-  //     });
-  //   }
-
-  //   // ANNUAL REVENUE FILTER
-  //   if (query.min_annual_revenue || query.max_annual_revenue) {
-  //     const min = Number(query.min_annual_revenue) || 0;
-  //     const max = Number(query.max_annual_revenue) || 999999999;
-  //     allData = allData.filter(item => {
-  //       const num = Number((item.annual_revenue || "").replace(/\D/g, "")) || 0;
-  //       return num >= min && num <= max;
-  //     });
-  //   }
-
-  //   const total = allData.length;
-  //   const data = allData.slice(skip, skip + limit);
-
-  //   return {
-  //     success: true,
-  //     message: "Data fetched successfully",
-  //     data,
-  //     meta: { total, page, limit, pages: Math.ceil(total / limit) },
-  //     access: "authorized",
   //   };
   // }
 
