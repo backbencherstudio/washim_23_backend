@@ -129,18 +129,18 @@ export class LeadDataController {
     console.log('hi');
   }
 
-@Get('apollo')
-async findAllApollo(
-  @Query('q') q: string,
-  @Query() query: Record<string, any>,
-  @Req() req,
-) {
-  if (q) {
-    query.q = q;
-  }
+// @Get('apollo')
+// async findAllApollo(
+//   @Query('q') q: string,
+//   @Query() query: Record<string, any>,
+//   @Req() req,
+// ) {
+//   if (q) {
+//     query.q = q;
+//   }
 
-  return this.LeadDataService.findAllApollo(query, req.user);
-}
+//   return this.LeadDataService.findAllApollo(query, req.user);
+// }
 
 
   //f
