@@ -1,12 +1,10 @@
 import * as bcrypt from 'bcryptjs';
 import * as speakeasy from 'speakeasy';
 import * as QRCode from 'qrcode';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../prisma/prisma.client';
 import appConfig from '../../../config/app.config';
 import { ArrayHelper } from '../../helper/array.helper';
 import { Role } from '../../guard/role/role.enum';
-
-const prisma = new PrismaClient();
 
 export class UserRepository {
   /**

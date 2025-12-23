@@ -448,7 +448,6 @@ model SalesNavigatorLead {
   company_name   String?
   company_domain String?
   company_id     String?
-  //
   location       String?
   city           String?
   linkedin_id    String?
@@ -458,7 +457,11 @@ model SalesNavigatorLead {
   deleted_at     DateTime?
   userId         String?
   user           User?     @relation(fields: [userId], references: [id])
+  
+  @@index([job_title,company_domain,url,city,email_first,email_second,location])
+  @@map("sales_navigator_leads")
 }
+
 
 model ZoominfoLead {
   id                    String  @id @default(cuid())
@@ -503,6 +506,9 @@ model ZoominfoLead {
   deleted_at                DateTime?
   userId                    String?
   user                      User?     @relation(fields: [userId], references: [id])
+
+  @@index([email,lead_titles,company_industry,company_website,revenue_range,skills])
+  @@map("zoominfo_leads")
 }
 
 model ApolloLead {
@@ -575,4 +581,7 @@ model ApolloLead {
   deleted_at                          DateTime?
   userId                              String?
   user                                User?     @relation(fields: [userId], references: [id])
+
+  @@index([title,industry,keywords,technologies,website,company_uinkedin_url,country,city,state,annual_revenue])
+  @@map("apollo_leads")
 }

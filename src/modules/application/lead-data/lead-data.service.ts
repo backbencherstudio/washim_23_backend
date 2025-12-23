@@ -127,166 +127,6 @@ export class LeadDataService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  // async importCsv(csvData: string, type: string, userId: string) {
-  //   if (!userId) throw new BadRequestException('User not found');
-
-  //   // 1. Define headers based on type (Same as before)
-  //   const expectedHeaders: string[] = [];
-  //   let emailColumns: string[] = [];
-
-  //   switch (type) {
-  //     case 'SALES_NAVIGATOR':
-  //       expectedHeaders.push(
-  //         'first_name', 'last_name', 'job_title', 'email_first', 'email_second',
-  //         'phone', 'company_phone', 'url', 'company_name', 'company_domain',
-  //         'company_id', 'location', 'linkedin_id', 'created_date',
-  //       );
-  //       emailColumns = ['email_first', 'email_second'];
-  //       break;
-
-  //     case 'ZOOMINFO':
-  //       expectedHeaders.push(
-  //         'company_id', 'name', 'email', 'email_score', 'phone', 'work_phone',
-  //         'lead_location', 'lead_divison', 'lead_titles', 'seniority_level',
-  //         'decision_making_power', 'company_function', 'company_funding_range',
-  //         'latest_funding_stage', 'company_name', 'company_size',
-  //         'company_location_text', 'company_type', 'company_industry',
-  //         'company_sector', 'company_facebook_page', 'revenue_range',
-  //         'ebitda_range', 'company_size_key', 'linkedin_url',
-  //         'company_founded_at', 'company_website','skills','past_companies',
-  //         'company_phone_numbers','company_linkedin_page','company_sic_code','company_naics_code'
-  //       );
-  //       emailColumns = ['email'];
-  //       break;
-
-  //     case 'APOLLO':
-  //       expectedHeaders.push(
-  //         'first_name', 'last_name', 'title', 'company_name', 'company_name_for_emails',
-  //         'email', 'email_status', 'primary_email_source', 'primary_email_verification_source',
-  //         'email_confidence', 'primary_email_catch_all_status', 'primary_email_last_verified_at',
-  //         'seniority', 'departments', 'contact_owner', 'work_direct_phone', 'home_phone',
-  //         'mobile_phone', 'corporate_phone', 'other_phone', 'stage', 'lists', 'last_contacted',
-  //         'account_owner', 'employees', 'industry', 'keywords', 'person_linkedin_url',
-  //         'website', 'company_uinkedin_url', 'facebook_url', 'twitter_url', 'city', 'state',
-  //         'country', 'company_address', 'company_city', 'company_state', 'company_country',
-  //         'company_phone', 'technologies', 'annual_revenue', 'total_funding', 'latest_funding',
-  //         'latest_funding_amount', 'last_raised_at', 'subsidiary_of', 'email_sent',
-  //         'email_open', 'email_bounced', 'replied', 'demoed', 'number_of_retail_locations',
-  //         'apollo_contact_id', 'apollo_account_id', 'secondary_email', 'secondary_email_source',
-  //         'secondary_email_status', 'secondary_email_verification_source', 'tertiary_email',
-  //         'tertiary_email_source', 'tertiary_email_status', 'tertiary_email_verification_source',
-  //       );
-  //       emailColumns = ['email', 'secondary_email', 'tertiary_email'];
-  //       break;
-
-  //     default:
-  //       throw new BadRequestException('Invalid lead type');
-  //   }
-
-  //   // 2. Parse CSV
-  //   const parsed = Papa.parse(csvData, { header: true, skipEmptyLines: 'greedy' }); // 'greedy' skips whitespace-only lines
-
-  //   if (parsed.errors.length && parsed.data.length === 0) {
-  //      // Only fail if NO data could be parsed
-  //     return {
-  //       success: false,
-  //       message: 'CSV Parsing Error',
-  //       errors: parsed.errors,
-  //     };
-  //   }
-
-  //   // 3. Row Processing
-  //   // We removed the header strict check to allow partial imports if needed,
-  //   // but if you want strict headers, you can keep that block.
-
-  //   const cleanedRows = parsed.data.map((row: any) => {
-  //       // Initialize object with all expected keys set to NULL
-  //       // This ensures the DB gets a complete object structure
-  //       const cleanRow: any = {};
-  //       expectedHeaders.forEach(h => cleanRow[h] = null);
-
-  //       // Fill with data from CSV
-  //       Object.keys(row).forEach((key) => {
-  //         // Only process if the key matches our expected headers (security & cleanup)
-  //         if (expectedHeaders.includes(key)) {
-  //           let value = String(row[key] || '').trim();
-
-  //           // Cleanup junk values
-  //           if (value.toLowerCase() === 'nan' || value === '') {
-  //               value = null;
-  //           } else {
-  //               // Remove extra quotes
-  //               value = value.replace(/^(\[?['"]\]?)+|(['"]\]?)+$/g, '');
-  //               // Truncate if too long
-  //               if (value.length > 1000) value = value.substring(0, 1000);
-  //           }
-
-  //           // Relaxed Email Logic: If invalid, set to NULL (don't reject row)
-  //           if (emailColumns.includes(key) && value) {
-  //               if (!value.includes('@')) {
-  //                   value = null; // Invalid email becomes null
-  //               }
-  //           }
-
-  //           cleanRow[key] = value;
-  //         }
-  //       });
-
-  //       // Check if the row is completely empty (all values null)
-  //       const hasData = Object.values(cleanRow).some((v) => v !== null);
-  //       if (!hasData) return null;
-
-  //       // Attach User ID
-  //       cleanRow['userId'] = userId; // Note: In schema relation fields might be `userId` or `user_id` check Schema carefully.
-  //       // Based on your schema:
-  //       // SalesNavigatorLead -> userId
-  //       // ZoominfoLead -> userId
-  //       // ApolloLead -> userId
-  //       // So 'userId' is correct.
-
-  //       return cleanRow;
-  //     })
-  //     .filter((r) => r !== null); // Remove completely empty rows
-
-  //   // 4. Insert Valid Rows
-  //   if (cleanedRows.length) {
-  //     try {
-  //       switch (type) {
-  //         case 'SALES_NAVIGATOR':
-  //           await this.prisma.salesNavigatorLead.createMany({
-  //             data: cleanedRows,
-  //             skipDuplicates: true, // Optional: Skips if unique constraint fails
-  //           });
-  //           break;
-  //         case 'ZOOMINFO':
-  //           await this.prisma.zoominfoLead.createMany({
-  //               data: cleanedRows,
-  //               skipDuplicates: true,
-  //           });
-  //           break;
-  //         case 'APOLLO':
-  //           await this.prisma.apolloLead.createMany({
-  //               data: cleanedRows,
-  //               skipDuplicates: true,
-  //           });
-  //           break;
-  //       }
-  //     } catch (error) {
-  //         console.error("Database Insert Error:", error);
-  //         throw new BadRequestException("Failed to save data to database. Check fields.");
-  //     }
-  //   }
-
-  //   return {
-  //     success: true,
-  //     imported: cleanedRows.length,
-  //     type,
-  //     message: `${type} leads imported successfully.`,
-  //     // We are no longer returning errorRows because we fix them or ignore bad fields
-  //     errors: null,
-  //   };
-  // }
-
   // Change input type to accept Buffer for better memory handling
   async importCsv(fileBuffer: Buffer, type: string, userId: string) {
     if (!userId) throw new BadRequestException('User not found');
@@ -476,19 +316,46 @@ export class LeadDataService {
 
     await this.updateJobStatus(jobId, 'PROCESSING');
 
-    // Stream directly from Buffer
-    const stream = Readable.from(buffer).pipe(
-      parse({
-        headers: true,
-        trim: true,
-        ignoreEmpty: true,
-        strictColumnHandling: false,
-        discardUnmappedColumns: true,
-      }),
-    );
+    // Stream directly from Buffer - collect all rows first
+    const rows: any[] = [];
+
+    const parseStream = parse({
+      headers: true,
+      trim: true,
+      ignoreEmpty: true,
+      strictColumnHandling: false,
+      discardUnmappedColumns: true,
+    });
+
+    const stream = Readable.from(buffer).pipe(parseStream);
+
+    // Collect rows in array
+    parseStream.on('data', (row) => {
+      rows.push(row);
+    });
+
+    // Handle parse errors - skip malformed rows
+    parseStream.on('error', (error) => {
+      this.logger.warn(`CSV Parse Error (row skipped): ${error.message}`);
+      totalFailed++;
+      // Resume to continue parsing
+      parseStream.resume();
+    });
+
+    // Wait for parsing to complete
+    await new Promise<void>((resolve, reject) => {
+      parseStream.on('end', () => resolve());
+      parseStream.on('finish', () => resolve());
+      stream.on('error', (err) => {
+        this.logger.warn(`Stream error (continuing): ${err.message}`);
+        resolve(); // Don't reject
+      });
+    });
+
+    this.logger.log(`Parsed ${rows.length} rows from CSV`);
 
     try {
-      for await (const row of stream) {
+      for (const row of rows) {
         totalProcessed++; // প্রত্যেকটি রো-এর সংখ্যা
 
         try {
@@ -1212,7 +1079,9 @@ export class LeadDataService {
     // --- Paginate filtered data ---
     const paginatedData = filteredData.slice(skip, skip + limit);
 
-    console.log(`ApolloLead: total after filters = ${newTotal}, returning ${paginatedData.length} rows for page ${page}`);
+    console.log(
+      `ApolloLead: total after filters = ${newTotal}, returning ${paginatedData.length} rows for page ${page}`,
+    );
 
     return {
       success: true,
@@ -1227,385 +1096,6 @@ export class LeadDataService {
       access: 'authorized',
     };
   }
-
-  // ======================old code =======================
-
-  // private async ApolloLead(
-  //   model: 'apolloLead',
-  //   query: Record<string, any>,
-  //   user: any,
-  // ) {
-  //   // 1. Setup Pagination Parameters
-  //   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  //   const limit = Number(query.limit) > 0 ? Number(query.limit) : undefined;
-  //   const skip = limit ? (page - 1) * limit : 0; // Set skip to 0 if no limit
-
-  //   // 2. Setup Database WHERE Clause
-  //   const where: any = { deleted_at: null };
-  //   where.AND = [];
-
-  //   // 🔍 Free text search (q)
-  //   if (query.q) {
-  //     const searchTerm = String(query.q).trim();
-  //     where.AND.push({
-  //       OR: [
-  //         { first_name: { contains: searchTerm, mode: 'insensitive' } },
-  //         { last_name: { contains: searchTerm, mode: 'insensitive' } },
-  //         { title: { contains: searchTerm, mode: 'insensitive' } },
-  //         { company_name: { contains: searchTerm, mode: 'insensitive' } },
-  //         { email: { contains: searchTerm, mode: 'insensitive' } },
-  //         { city: { contains: searchTerm, mode: 'insensitive' } },
-  //         { country: { contains: searchTerm, mode: 'insensitive' } },
-  //         { industry: { contains: searchTerm, mode: 'insensitive' } },
-  //         { keywords: { contains: searchTerm, mode: 'insensitive' } },
-  //         { website: { contains: searchTerm, mode: 'insensitive' } },
-  //       ],
-  //     });
-  //   }
-
-  //   // 🔧 Dynamic Filters (Applies filters that can be handled by the DB)
-  //   for (const key of Object.keys(query)) {
-  //     // Skip pagination, sort, search query, and in-memory filter keys
-  //     if (['page', 'limit', 'sortBy', 'order', 'q', 'min_employee', 'max_employee', 'min_annual_revenue', 'max_annual_revenue'].includes(key))
-  //       continue;
-
-  //     const value = query[key];
-  //     if (!value) continue;
-
-  //     let values: string[] = [];
-  //     try {
-  //       values = Array.isArray(value) ? value : JSON.parse(value);
-  //       if (!Array.isArray(values)) values = [String(value)];
-  //     } catch {
-  //       values = [String(value)];
-  //     }
-
-  //     if (key === 'name') {
-  //       where.AND.push({
-  //         OR: values.flatMap((v) => [
-  //           { first_name: { contains: v, mode: 'insensitive' } },
-  //           { last_name: { contains: v, mode: 'insensitive' } },
-  //         ]),
-  //       });
-  //     } else if (key === 'job_titles' || key === 'job_titless') {
-  //       where.AND.push({
-  //         OR: values.map((v) => ({ title: { contains: v, mode: 'insensitive' } })),
-  //       });
-  //     } else if (key === 'keyword') {
-  //       where.AND.push({
-  //         OR: values.map((v) => ({ keywords: { contains: v, mode: 'insensitive' } })),
-  //       });
-  //     } else if (key === 'company_linkedin') {
-  //       where.AND.push({
-  //         OR: values.map((v) => ({ company_uinkedin_url: { contains: v, mode: 'insensitive' } })),
-  //       });
-  //     } else if (key === 'country') {
-  //       where.AND.push({
-  //         OR: values.map((v) => ({ country: { contains: v, mode: 'insensitive' } })),
-  //       });
-  //     } else if (key === 'city') {
-  //       where.AND.push({
-  //         OR: values.map((v) => ({ city: { contains: v, mode: 'insensitive' } })),
-  //       });
-  //     } else if (key === 'state') {
-  //       where.AND.push({
-  //         OR: values.map((v) => ({ state: { contains: v, mode: 'insensitive' } })),
-  //       });
-  //     } else if (key === 'email_status') {
-  //       where.AND.push({
-  //         OR: values.map((v) => ({ email_status: { contains: v, mode: 'insensitive' } })),
-  //       });
-  //     } else if (key === 'annual_revenue') {
-  //       where.AND.push({
-  //         OR: values.map((v) => ({ annual_revenue: { contains: v, mode: 'insensitive' } })),
-  //       });
-  //     } else if (key === 'demoed') {
-  //       where.AND.push({
-  //         OR: values.map((v) => ({ demoed: { contains: v, mode: 'insensitive' } })),
-  //       });
-  //     } else {
-  //       where.AND.push({
-  //         OR: values.map((v) => ({ [key]: { contains: v, mode: 'insensitive' } })),
-  //       });
-  //     }
-  //   }
-
-  //   if (where.AND.length === 0) delete where.AND;
-
-  //   // 3. Setup Sorting
-  //   const sortBy = query.sortBy || 'created_at';
-  //   const order =
-  //     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-  //       ? (query.order.toLowerCase() as Prisma.SortOrder)
-  //       : Prisma.SortOrder.desc;
-  //   const orderBy = { [sortBy]: order };
-
-  //   const delegate: any = (this.prisma as any)[model];
-
-  //   // --- START OF FIX: Fetch ALL matching data for correct total count ---
-
-  //   // 4. Fetch all data that matches DB-compatible filters.
-  //   // We intentionally remove 'take' and 'skip' here to fetch the complete set
-  //   // for accurate in-memory range filtering.
-  //   let data = await delegate.findMany({
-  //     where,
-  //     orderBy,
-  //     // take: limit, // REMOVED
-  //     // skip,        // REMOVED
-  //   });
-
-  //   let finalData = data;
-
-  //   // 5. Apply In-Memory Range Filters
-
-  //   // ==================================
-  //   // 🔥 Employee Range Filter
-  //   // ==================================
-  //   if (query.min_employee || query.max_employee) {
-  //     const min = Number(query.min_employee) || 0;
-  //     const max = Number(query.max_employee) || 999999;
-
-  //     finalData = finalData.filter((item) => {
-  //       // Assuming 'employees' is a string like "10k-50k" or "10"
-  //       if (!item.employees) return false;
-  //       // Extract only digits to handle formats like "10k-50k" by taking the first number,
-  //       // which is acceptable for a simple range comparison
-  //       const numMatch = String(item.employees).match(/\d+/);
-  //       const num = numMatch ? Number(numMatch[0]) : NaN;
-
-  //       if (isNaN(num)) return false;
-  //       return num >= min && num <= max;
-  //     });
-  //   }
-
-  //   // ==================================
-  //   // 🔥 Annual Revenue Range Filter
-  //   // ==================================
-  //   if (query.min_annual_revenue || query.max_annual_revenue) {
-  //     const minR = Number(query.min_annual_revenue) || 0;
-  //     const maxR = Number(query.max_annual_revenue) || 9999999;
-
-  //     finalData = finalData.filter((item) => {
-  //       // Assuming 'annual_revenue' is a string
-  //       if (!item.annual_revenue) return false;
-  //       const numMatch = String(item.annual_revenue).match(/\d+/);
-  //       const num = numMatch ? Number(numMatch[0]) : NaN;
-
-  //       if (isNaN(num)) return false;
-  //       return num >= minR && num <= maxR;
-  //     });
-  //   }
-
-  //   // 6. Calculate Total Count and Manually Paginate
-  //   const totalCount = finalData.length;
-
-  //   if (limit) {
-  //     // Slice the full filtered array to get only the current page's data
-  //     finalData = finalData.slice(skip, skip + limit);
-  //   }
-
-  //   // --- END OF FIX ---
-
-  //   return {
-  //     success: true,
-  //     message: 'Data fetched successfully',
-  //     data: finalData, // This is the paginated data (max 'limit' items)
-  //     meta: {
-  //       total: totalCount, // This is the corrected total count across ALL pages
-  //       page: limit ? page : 1,
-  //       limit: limit || totalCount,
-  //       pages: limit ? Math.ceil(totalCount / limit) : 1,
-  //     },
-  //     access: 'authorized',
-  //   };
-  // }
-
-  // private async ApolloLead(
-  //   model: 'apolloLead',
-  //   query: Record<string, any>,
-  //   user: any,
-  // ) {
-  //   // 🔹 Pagination setup
-  //   const page = Number(query.page) > 0 ? Number(query.page) : 1;
-  //   const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
-  //   const skip = (page - 1) * limit;
-
-  //   const where: any = { deleted_at: null };
-  //   where.AND = [];
-
-  //   // 🔹 Dynamic filters (non-range)
-  //   for (const key of Object.keys(query)) {
-  //     if (
-  //       [
-  //         'page',
-  //         'limit',
-  //         'sortBy',
-  //         'order',
-  //         'q',
-  //         'min_employee',
-  //         'max_employee',
-  //         'min_annual_revenue',
-  //         'max_annual_revenue',
-  //       ].includes(key)
-  //     )
-  //       continue;
-
-  //     const value = query[key];
-  //     if (value === undefined || value === null) continue;
-
-  //     // Parse value into array of strings safely
-  //     let values: string[] = [];
-  //     try {
-  //       const parsed = Array.isArray(value) ? value : JSON.parse(value);
-  //       values = Array.isArray(parsed)
-  //         ? parsed
-  //             .map((v) => (v !== null && v !== undefined ? String(v) : null))
-  //             .filter(Boolean)
-  //         : [String(parsed)];
-  //     } catch {
-  //       values = [String(value)];
-  //     }
-
-  //     if (!values.length) continue;
-
-  //     switch (key) {
-  //       case 'name':
-  //         where.AND.push({
-  //           OR: values.flatMap((v) => [
-  //             { first_name: { contains: v, mode: 'insensitive' } },
-  //             { last_name: { contains: v, mode: 'insensitive' } },
-  //           ]),
-  //         });
-  //         break;
-  //       default:
-  //         where.AND.push({
-  //           OR: values.map((v) => ({
-  //             [key]: { contains: v, mode: 'insensitive' },
-  //           })),
-  //         });
-  //     }
-  //   }
-
-  //   if (where.AND.length === 0) delete where.AND;
-
-  //   // 🔹 Sorting
-  //   const sortBy = query.sortBy || 'created_at';
-  //   const order =
-  //     query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
-  //       ? (query.order.toLowerCase() as Prisma.SortOrder)
-  //       : 'desc';
-  //   const orderBy = { [sortBy]: order };
-
-  //   const delegate: any = (this.prisma as any)[model];
-
-  //   // --- Numeric filters ---
-  //   const minEmp = query.min_employee ? Number(query.min_employee) : null;
-  //   const maxEmp = query.max_employee ? Number(query.max_employee) : null;
-  //   const minRev = query.min_annual_revenue
-  //     ? Number(query.min_annual_revenue)
-  //     : null;
-  //   const maxRev = query.max_annual_revenue
-  //     ? Number(query.max_annual_revenue)
-  //     : null;
-
-  //   // --- Fetch all matching rows with error handling for corrupted data ---
-  //   let allData: any[] = [];
-  //   try {
-  //     allData = await delegate.findMany({
-  //       where,
-  //       orderBy,
-  //     });
-  //   } catch (err) {
-  //     // Handle corrupted UTF-8 data error
-  //     if (err.message?.includes('Failed to convert') || err.code === 'GenericFailure') {
-  //       this.logger.warn('Prisma fetch failed due to invalid UTF-8 data. Using raw query fallback...');
-
-  //       // Fallback: Use raw SQL query with text sanitization
-  //       const orderDirection = order.toUpperCase();
-  //       const safeSort = ['created_at', 'updated_at', 'first_name', 'last_name', 'company_name', 'email'].includes(sortBy)
-  //         ? sortBy
-  //         : 'created_at';
-
-  //       try {
-  //         allData = await this.prisma.$queryRawUnsafe(`
-  //           SELECT * FROM "ApolloLead"
-  //           WHERE deleted_at IS NULL
-  //           ORDER BY "${safeSort}" ${orderDirection}
-  //         `);
-
-  //         // Sanitize string fields to remove invalid characters
-  //         allData = allData.map((row: any) => {
-  //           const sanitized = { ...row };
-  //           for (const key of Object.keys(sanitized)) {
-  //             if (typeof sanitized[key] === 'string') {
-  //               // Remove NULL bytes and invalid UTF-8 control characters
-  //               sanitized[key] = sanitized[key]
-  //                 .replace(/\0/g, '')
-  //                 .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-  //             }
-  //           }
-  //           return sanitized;
-  //         });
-  //       } catch (rawErr) {
-  //         this.logger.error('Raw query also failed:', rawErr.message);
-  //         throw new BadRequestException('Database contains corrupted data. Please clean the ApolloLead table.');
-  //       }
-  //     } else {
-  //       throw err;
-  //     }
-  //   }
-
-  //   // --- Apply numeric filtering in JS ---
-  //   let filteredData = allData;
-  //   if (
-  //     minEmp !== null ||
-  //     maxEmp !== null ||
-  //     minRev !== null ||
-  //     maxRev !== null
-  //   ) {
-  //     filteredData = allData.filter((row: any) => {
-  //       // Parse employees - handle string formats like "100", "1000", or numeric
-  //       let emp = 0;
-  //       if (row.employees) {
-  //         const empStr = String(row.employees).replace(/[^\d]/g, '');
-  //         emp = empStr ? Number(empStr) : 0;
-  //       }
-
-  //       // Parse annual_revenue - handle string formats
-  //       let rev = 0;
-  //       if (row.annual_revenue) {
-  //         const revStr = String(row.annual_revenue).replace(/[^\d]/g, '');
-  //         rev = revStr ? Number(revStr) : 0;
-  //       }
-
-  //       if (minEmp !== null && emp < minEmp) return false;
-  //       if (maxEmp !== null && emp > maxEmp) return false;
-
-  //       if (minRev !== null && rev < minRev) return false;
-  //       if (maxRev !== null && rev > maxRev) return false;
-
-  //       return true;
-  //     });
-  //   }
-
-  //   const newTotal = filteredData.length;
-
-  //   // --- Paginate filtered data ---
-  //   const paginatedData = filteredData.slice(skip, skip + limit);
-
-  //   return {
-  //     success: true,
-  //     message: 'Data fetched successfully',
-  //     data: paginatedData,
-  //     meta: {
-  //       total: newTotal,
-  //       page,
-  //       limit,
-  //       pages: Math.ceil(newTotal / limit),
-  //     },
-  //     access: 'authorized',
-  //   };
-  // }
 
   async getJobTitles(search?: string) {
     try {
@@ -1926,55 +1416,21 @@ export class LeadDataService {
     const limit = Number(query.limit) > 0 ? Number(query.limit) : 20;
     const skip = (page - 1) * limit;
 
-    const where: any = { AND: [] }; // 🔹 Free text search (q)
+    const where: any = { AND: [] };
 
     if (query.q) {
       const search = String(query.q).trim();
       where.AND.push({
         OR: [
-          { company_id: { contains: search, mode: 'insensitive' } },
-          { name: { contains: search, mode: 'insensitive' } },
-          { email: { contains: search, mode: 'insensitive' } },
-          { email_score: { contains: search, mode: 'insensitive' } },
-          { phone: { contains: search, mode: 'insensitive' } },
-          { work_phone: { contains: search, mode: 'insensitive' } },
-          { lead_location: { contains: search, mode: 'insensitive' } },
-          { location: { contains: search, mode: 'insensitive' } },
-          { lead_divison: { contains: search, mode: 'insensitive' } },
-          { lead_titles: { contains: search, mode: 'insensitive' } },
-          { seniority_level: { contains: search, mode: 'insensitive' } },
-          { skills: { contains: search, mode: 'insensitive' } },
-          { past_companies: { contains: search, mode: 'insensitive' } },
-          { company_name: { contains: search, mode: 'insensitive' } },
-          { company_size: { contains: search, mode: 'insensitive' } },
-          { company_phone_numbers: { contains: search, mode: 'insensitive' } },
-          { company_location_text: { contains: search, mode: 'insensitive' } },
-          { company_type: { contains: search, mode: 'insensitive' } },
-          { company_industry: { contains: search, mode: 'insensitive' } },
-          { company_sector: { contains: search, mode: 'insensitive' } },
-          { company_facebook_page: { contains: search, mode: 'insensitive' } },
-          { revenue_range: { contains: search, mode: 'insensitive' } },
-          { ebitda_range: { contains: search, mode: 'insensitive' } },
-          { company_linkedin_page: { contains: search, mode: 'insensitive' } },
-          { decision_making_power: { contains: search, mode: 'insensitive' } },
-          { company_function: { contains: search, mode: 'insensitive' } },
-          { company_funding_range: { contains: search, mode: 'insensitive' } },
-          { latest_funding_stage: { contains: search, mode: 'insensitive' } },
-          { company_sic_code: { contains: search, mode: 'insensitive' } },
-          { company_naics_code: { contains: search, mode: 'insensitive' } },
-          { company_size_key: { contains: search, mode: 'insensitive' } },
-          { linkedin_url: { contains: search, mode: 'insensitive' } },
-          { company_founded_at: { contains: search, mode: 'insensitive' } },
-          { company_website: { contains: search, mode: 'insensitive' } },
-          {
-            company_products_services: {
-              contains: search,
-              mode: 'insensitive',
-            },
-          },
+          // ...existing code...
         ],
       });
-    } // 🔹 Dynamic filters (Updated for Multi-Select)
+    }
+
+    // 🔥 Field mapping for aliases
+    const fieldMap: Record<string, string> = {
+      keyword: 'skills', // Map 'keyword' to 'skills' field
+    };
 
     for (const key of Object.keys(query)) {
       // যে key গুলোকে skip করা হবে
@@ -1988,6 +1444,8 @@ export class LeadDataService {
           'q',
           'search',
           'email',
+          'skills', // 🔥 skills কে এখানে skip করুন
+          'keyword', // 🔥 keyword handled separately
         ].includes(key)
       )
         continue;
@@ -1997,13 +1455,11 @@ export class LeadDataService {
 
       let values: string[] = [];
       try {
-        // Value যদি একটি অ্যারে হয় বা JSON স্ট্রিং হয়, তবে সেটি পার্স করার চেষ্টা করা হচ্ছে
         values = Array.isArray(value) ? value : JSON.parse(value);
         if (!Array.isArray(values)) values = [String(value)];
       } catch {
-        // পার্স না হলে, সিঙ্গেল স্ট্রিং হিসেবে ধরা হচ্ছে
         values = [String(value)];
-      } // খালি ভ্যালুগুলো বাদ দেওয়া
+      }
 
       const filterValues = values
         .map((v) => String(v).trim())
@@ -2011,33 +1467,73 @@ export class LeadDataService {
 
       if (filterValues.length === 0) continue;
 
-      // 🚨 প্রধান পরিবর্তন: lead_location এবং অন্যান্য মাল্টি-সিলেক্ট ফিল্ডের জন্য লজিক
+      // 🔥 Map field name if it exists in fieldMap
+      const actualFieldName = fieldMap[key] || key;
+
       if (
-        key === 'lead_location' ||
-        key === 'location' ||
-        key ===
-          'lead_divison' /* আপনার অন্যান্য মাল্টি-সিলেক্ট ফিল্ড এখানে যোগ করুন */
+        actualFieldName === 'lead_location' ||
+        actualFieldName === 'location' ||
+        actualFieldName === 'lead_divison'
       ) {
-        // lead_location: যদি একাধিক ভ্যালু থাকে, তবে যেকোন একটি ভ্যালুর সাথে ম্যাচ হলেই হবে (OR)
         const locationFilters = filterValues.map((v) => ({
-          [key]: { contains: v, mode: 'insensitive' },
+          [actualFieldName]: { contains: v, mode: 'insensitive' },
         }));
 
         if (locationFilters.length > 0) {
           where.AND.push({ OR: locationFilters });
         }
       } else {
-        // অন্যান্য সিঙ্গেল-সিলেক্ট বা ফিল্ড, যেখানে একটি কলামে একটির বেশি ভ্যালু আশা করা হয় না
-        // এখানেও OR লজিক ব্যবহার করা হচ্ছে (এটি ধরে নেওয়া হচ্ছে যে মাল্টি-সিলেক্টের জন্য ব্যবহৃত হচ্ছে)
         where.AND.push({
           OR: filterValues.map((v) => ({
-            [key]: { contains: v, mode: 'insensitive' },
+            [actualFieldName]: { contains: v, mode: 'insensitive' },
           })),
         });
       }
-    } // end of dynamic filters loop
-    // 🔹 Email status filter
+    }
 
+    // 🔥 Skills filter - special handling for comma-separated values
+    if (query.skills) {
+      let skillsToFilter: string[] = [];
+
+      if (Array.isArray(query.skills)) {
+        skillsToFilter = query.skills.map((s) => String(s).trim());
+      } else if (typeof query.skills === 'string') {
+        skillsToFilter = query.skills.split(',').map((s) => s.trim());
+      }
+
+      skillsToFilter = skillsToFilter.filter((s) => s.length > 0);
+
+      if (skillsToFilter.length > 0) {
+        where.AND.push({
+          OR: skillsToFilter.map((skill) => ({
+            skills: { contains: skill, mode: 'insensitive' },
+          })),
+        });
+      }
+    }
+
+    // � Keyword filter - special handling for comma-separated values
+    if (query.keyword) {
+      let keywordsToFilter: string[] = [];
+
+      if (Array.isArray(query.keyword)) {
+        keywordsToFilter = query.keyword.map((k) => String(k).trim());
+      } else if (typeof query.keyword === 'string') {
+        keywordsToFilter = query.keyword.split(',').map((k) => k.trim());
+      }
+
+      keywordsToFilter = keywordsToFilter.filter((k) => k.length > 0);
+
+      if (keywordsToFilter.length > 0) {
+        where.AND.push({
+          OR: keywordsToFilter.map((keyword) => ({
+            skills: { contains: keyword, mode: 'insensitive' },
+          })),
+        });
+      }
+    }
+
+    // �🔹 Email status filter
     if (query.email) {
       if (query.email === 'notAvailable') {
         where.AND.push({
@@ -2050,8 +1546,9 @@ export class LeadDataService {
       }
     }
 
-    if (where.AND.length === 0) delete where.AND; // 🔹 Sorting
+    if (where.AND.length === 0) delete where.AND;
 
+    // 🔹 Sorting
     const sortBy = query.sortBy || 'created_at';
     const order =
       query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
@@ -2059,7 +1556,7 @@ export class LeadDataService {
         : Prisma.SortOrder.desc;
     const orderBy = { [sortBy]: order };
 
-    const delegate = (this.prisma as any)[model]; // 🔹 Fetch data with pagination
+    const delegate = (this.prisma as any)[model];
 
     const data = await delegate.findMany({
       where,
@@ -2371,6 +1868,9 @@ export class LeadDataService {
           'q',
           'search',
           'location',
+          // handled specially below
+          'urls',
+          'linkedin_id',
         ].includes(key)
       )
         continue;
@@ -2391,6 +1891,25 @@ export class LeadDataService {
           [key]: { contains: v, mode: 'insensitive' },
         })),
       });
+    }
+
+    // Handle `urls` as alias of the `url` field (array or comma separated)
+    if (query.urls) {
+      let urls: string[] = [];
+
+      if (Array.isArray(query.urls)) {
+        urls = query.urls.map((u) => String(u).trim());
+      } else if (typeof query.urls === 'string') {
+        urls = query.urls.split(',').map((u) => u.trim());
+      }
+
+      urls = urls.filter((u) => u.length > 0);
+
+      if (urls.length > 0) {
+        where.AND.push({
+          OR: urls.map((u) => ({ url: { contains: u, mode: 'insensitive' } })),
+        });
+      }
     }
 
     // ---------------------------
