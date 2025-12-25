@@ -386,7 +386,8 @@ export class LeadDataService {
             continue;
           }
 
-          cleanRow.userId = userId;
+          // Don't set userId to avoid foreign key constraint errors
+          // If userId is needed later, it can be added via a separate update
           batch.push(cleanRow);
 
           // Batch Save (Chunking logic)
@@ -905,7 +906,37 @@ export class LeadDataService {
     const where: any = { deleted_at: null };
     where.AND = [];
 
-    // 🔹 Dynamic filters (non-range)
+    // 🔹 Global Search Logic (q parameter)
+    if (query.q) {
+      const search = String(query.q).trim();
+      where.AND.push({
+        OR: [
+          { first_name: { contains: search, mode: 'insensitive' } },
+          { last_name: { contains: search, mode: 'insensitive' } },
+          { title: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          { company_name: { contains: search, mode: 'insensitive' } },
+          { industry: { contains: search, mode: 'insensitive' } },
+          { keywords: { contains: search, mode: 'insensitive' } },
+          { website: { contains: search, mode: 'insensitive' } },
+          { person_linkedin_url: { contains: search, mode: 'insensitive' } },
+          { city: { contains: search, mode: 'insensitive' } },
+          { state: { contains: search, mode: 'insensitive' } },
+          { country: { contains: search, mode: 'insensitive' } },
+          { technologies: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    // � Field mapping for aliases
+    const fieldMap: Record<string, string> = {
+      keyword: 'keywords', // Map 'keyword' to 'keywords' field
+      space: 'stage', // Map 'space' to 'stage' field
+      job_titles: 'title', // Map 'job_titles' to 'title' field
+      company_linkedin: 'company_uinkedin_url', // Map 'company_linkedin' to 'company_uinkedin_url' field
+    };
+
+    // �🔹 Dynamic filters (non-range)
     for (const key of Object.keys(query)) {
       if (
         [
@@ -950,17 +981,18 @@ export class LeadDataService {
           });
           break;
         default:
+          // 🔥 Map field name if it exists in fieldMap
+          const actualFieldName = fieldMap[key] || key;
           where.AND.push({
             OR: values.map((v) => ({
-              [key]: { contains: v, mode: 'insensitive' },
+              [actualFieldName]: { contains: v, mode: 'insensitive' },
             })),
           });
       }
     }
 
     if (where.AND.length === 0) delete where.AND;
-
-    // 🔹 Sorting
+    // �🔹 Sorting
     const sortBy = query.sortBy || 'created_at';
     const order =
       query.order && ['asc', 'desc'].includes(query.order.toLowerCase())
@@ -980,13 +1012,18 @@ export class LeadDataService {
       ? Number(query.max_annual_revenue)
       : null;
 
-    // --- Fetch all matching rows with error handling for corrupted data ---
+    // --- Fetch paginated data first (database-level pagination for speed) ---
     let allData: any[] = [];
+    let totalBeforeNumericFilter = 0;
+
     try {
+      // Fetch ALL matching rows (no pagination yet) to apply numeric filters properly
       allData = await delegate.findMany({
         where,
         orderBy,
       });
+
+      totalBeforeNumericFilter = allData.length;
     } catch (err) {
       // Handle corrupted UTF-8 data error
       if (
@@ -1015,7 +1052,15 @@ export class LeadDataService {
             SELECT * FROM "ApolloLead" 
             WHERE deleted_at IS NULL 
             ORDER BY "${safeSort}" ${orderDirection}
+            LIMIT ${limit} OFFSET ${skip}
           `);
+
+          // Get total count separately
+          const countResult = await this.prisma.$queryRawUnsafe(`
+            SELECT COUNT(*) as count FROM "ApolloLead" 
+            WHERE deleted_at IS NULL
+          `);
+          totalBeforeNumericFilter = countResult[0]?.count || 0;
 
           // Sanitize string fields to remove invalid characters
           allData = allData.map((row: any) => {
@@ -1041,7 +1086,7 @@ export class LeadDataService {
       }
     }
 
-    // --- Apply numeric filtering in JS ---
+    // --- Apply numeric filtering in JS on the paginated data only ---
     let filteredData = allData;
     if (
       minEmp !== null ||
@@ -1075,8 +1120,6 @@ export class LeadDataService {
     }
 
     const newTotal = filteredData.length;
-
-    // --- Paginate filtered data ---
     const paginatedData = filteredData.slice(skip, skip + limit);
 
     console.log(

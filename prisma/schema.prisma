@@ -582,6 +582,5 @@ model ApolloLead {
   userId                              String?
   user                                User?     @relation(fields: [userId], references: [id])
 
-  @@index([title,industry,keywords,technologies,website,company_uinkedin_url,country,city,state,annual_revenue])
   @@map("apollo_leads")
 }
