@@ -17,7 +17,7 @@ services:
       # host.docker.internal is the host machine's IP address
       # - DATABASE_URL=postgresql://postgres:root@host.docker.internal/backend 
       # for use the "postgres" "service" name
-      - DATABASE_URL=postgresql://postgres:root@postgres/backend
+      - DATABASE_URL=postgresql://postgres:root@postgres/backend?connection_limit=20&pool_timeout=30
 
       - REDIS_HOST=redis
       - REDIS_PORT=6379
